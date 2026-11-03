@@ -6,11 +6,11 @@ interface LineDockProps {
   hud: HudSnapshot;
   selectedLineId: string | null;
   selectedColorIndex: number;
-  rewireMode: boolean;
+  rewireMode: 'start' | 'end' | null;
   onSelectSlot: (colorIndex: number) => void;
   onDelete: () => void;
   onRemoveEnd: () => void;
-  onRewire: () => void;
+  onRewire: (endpoint: 'start' | 'end') => void;
 }
 
 export function LineDock({
@@ -53,6 +53,7 @@ export function LineDock({
           <button
             disabled={
               selectedLine.constructionKind !== null ||
+              selectedLine.removing ||
               selectedLine.stationCount <= 2
             }
             onClick={onRemoveEnd}
@@ -60,14 +61,21 @@ export function LineDock({
             {t('line.removeEnd')}
           </button>
           <button
-            className={rewireMode ? 'active' : ''}
-            disabled={selectedLine.constructionKind !== null}
-            onClick={onRewire}
+            className={rewireMode === 'start' ? 'active' : ''}
+            disabled={selectedLine.constructionKind !== null || selectedLine.removing}
+            onClick={() => onRewire('start')}
+          >
+            {t('line.rewireStart')}
+          </button>
+          <button
+            className={rewireMode === 'end' ? 'active' : ''}
+            disabled={selectedLine.constructionKind !== null || selectedLine.removing}
+            onClick={() => onRewire('end')}
           >
             {t('line.rewireEnd')}
           </button>
           <button
-            disabled={selectedLine.constructionKind !== null}
+            disabled={selectedLine.constructionKind !== null || selectedLine.removing}
             onClick={onDelete}
           >
             {t('line.delete')}
@@ -95,7 +103,7 @@ function LineSlot({
 }: LineSlotProps) {
   return (
     <button
-      className={`line-slot ${selected ? 'selected' : ''} ${line ? 'has-line' : ''}`}
+      className={`line-slot ${selected ? 'selected' : ''} ${line ? 'has-line' : ''} ${line?.removing ? 'removing' : ''}`}
       onClick={onSelect}
     >
       <span className="line-swatch" style={{ background: color }} />
@@ -103,6 +111,15 @@ function LineSlot({
       <span className="line-meta">
         {line ? t('line.stations', { count: line.stationCount }) : t('line.empty')}
       </span>
+      {line && line.trainCount > 0 && (
+        <span className="line-meta">{t('line.trainCount', { count: line.trainCount })}</span>
+      )}
+      {line && line.carriageLevel > 0 && (
+        <span className="line-meta">{t('line.carriage', { count: line.carriageLevel })}</span>
+      )}
+      {line?.removing && (
+        <span className="line-construction delete">{t('line.removing')}</span>
+      )}
       {line?.constructionKind && (
         <span className={`line-construction ${line.constructionKind}`}>
           {t(`line.construction.${line.constructionKind}`, {

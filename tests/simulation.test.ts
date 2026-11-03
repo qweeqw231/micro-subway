@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { demoMap } from '../src/game/demo-map';
+import { GAME_MAPS, getMap } from '../src/game/maps';
+import { countWaterCrossings } from '../src/game/map-utils';
 import { params } from '../src/game/params';
 import { findRoute } from '../src/game/routing';
 import { Simulation } from '../src/game/simulation';
@@ -12,6 +14,61 @@ function runFor(simulation: Simulation, seconds: number): void {
     simulation.tick(tick);
   }
 }
+
+describe('Simulation M3', () => {
+  it('ships three maps with distinct graces and water', () => {
+    expect(GAME_MAPS).toHaveLength(3);
+    expect(GAME_MAPS.map((map) => map.overloadGraceSec)).toEqual([24, 18, 15]);
+    expect(GAME_MAPS.every((map) => map.water.length > 0)).toBe(true);
+  });
+
+  it('blocks water crossings when bridge capacity is exhausted', () => {
+    const tidal = getMap('tidal-bay');
+    if (!tidal) {
+      throw new Error('Missing tidal bay');
+    }
+
+    expect(countWaterCrossings(['s1', 's3'], tidal)).toBeGreaterThan(0);
+    const simulation = new Simulation(tidal, 20);
+    simulation.state.bridgeCapacity = 0;
+
+    expect(simulation.createLine(['s1', 's3'], 0)).toBeNull();
+    expect(simulation.lastActionError).toBe('bridge');
+
+    simulation.state.bridgeCapacity = 2;
+    expect(simulation.createLine(['s1', 's3'], 0)).toBe('L1');
+  });
+
+  it('stops at the week boundary and applies an upgrade before week two', () => {
+    const tidal = getMap('tidal-bay');
+    if (!tidal) {
+      throw new Error('Missing tidal bay');
+    }
+
+    const simulation = new Simulation(tidal, 21);
+    runFor(simulation, params.time.daySeconds * params.time.weekDays + 0.2);
+
+    expect(simulation.state.week).toBe(2);
+    expect(simulation.state.weekly?.phase).toBe('summary');
+    expect(simulation.state.weekly?.summary.newStations).toBe(1);
+    expect(simulation.state.weekly?.cards.length).toBe(
+      params.upgrades.cardsPerWeek,
+    );
+
+    simulation.advanceWeeklyToCards();
+    expect(simulation.state.weekly?.phase).toBe('cards');
+
+    simulation.state.weekly!.cards = [{ id: 'bridge', kind: 'bridge' }];
+    simulation.chooseUpgrade('bridge');
+
+    expect(simulation.state.weekly).toBeNull();
+    expect(simulation.state.bridgeCapacity).toBe(3);
+    expect(
+      simulation.state.stations.find((station) => station.id === 's7')?.active,
+    ).toBe(true);
+    expect(simulation.state.unlockedLineSlots).toBe(3);
+  });
+});
 
 describe('Simulation M2', () => {
   it('creates a line through construction and then puts a train on it', () => {
@@ -245,7 +302,7 @@ describe('Simulation M2', () => {
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
 
     const train = simulation.state.trains[0];
-    train.dwellSec = 1000;
+    train.dwellSec = 0;
     train.passengers.push({
       id: 4000,
       destType: 'work',
@@ -257,7 +314,7 @@ describe('Simulation M2', () => {
     });
 
     simulation.deleteLine('L1');
-    runFor(simulation, params.lines.construction.deleteSec + 0.1);
+    runFor(simulation, 10);
 
     const nextStation = simulation.state.stations.find((entry) => entry.id === 's2');
     expect(nextStation?.queue.some((passenger) => passenger.id === 4000)).toBe(true);
@@ -297,7 +354,7 @@ describe('Simulation M2', () => {
     expect(simulation.deleteLine('L1')).toBe(true);
     expect(simulation.state.lines[0].construction?.kind).toBe('delete');
 
-    runFor(simulation, params.lines.construction.deleteSec + 0.1);
+    runFor(simulation, 10);
 
     expect(simulation.state.lines).toHaveLength(0);
     expect(simulation.state.trains).toHaveLength(0);

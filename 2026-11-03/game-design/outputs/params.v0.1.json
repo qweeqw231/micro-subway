@@ -120,14 +120,15 @@
       "carriage": 22,
       "stationExpansion": 18,
       "newLine": 12,
-      "speed": 8,
-      "hub": 6,
-      "grace": 6
+      "bridge": 10,
+      "speed": 6,
+      "grace": 4
     },
     "caps": {
       "newTrainMaxPerLine": 4,
       "carriageMaxPerLine": 3,
       "lineMax": 6,
+      "bridgeMax": 6,
       "hubMaxStations": 2,
       "graceMaxStacks": 2,
       "speedMaxStacks": 2,
@@ -143,6 +144,7 @@
       "startStations": 6,
       "stationCap": 14,
       "startLines": 2,
+      "initialBridgeTokens": 2,
       "demandScale": 0.9,
       "overloadGraceSec": 24,
       "tutorialWeeks": 2,
@@ -161,6 +163,7 @@
       "startStations": 7,
       "stationCap": 16,
       "startLines": 2,
+      "initialBridgeTokens": 1,
       "demandScale": 1.0,
       "overloadGraceSec": 18,
       "stationMix": {
@@ -176,6 +179,7 @@
       "startStations": 8,
       "stationCap": 17,
       "startLines": 2,
+      "initialBridgeTokens": 2,
       "demandScale": 1.1,
       "overloadGraceSec": 15,
       "stationMix": {

@@ -1,5 +1,12 @@
 import { params } from '../game/params';
-import type { SimState, Station, StationType, Train } from '../game/types';
+import type {
+  GameMap,
+  Point,
+  SimState,
+  Station,
+  StationType,
+  Train,
+} from '../game/types';
 import { theme } from './theme';
 
 export interface DragState {
@@ -19,6 +26,7 @@ export interface RenderView {
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   state: SimState,
+  map: GameMap,
   view: RenderView,
 ): void {
   const width = params.ui.logicalWidth;
@@ -28,7 +36,7 @@ export function renderScene(
   ctx.fillStyle = theme.paper;
   ctx.fillRect(0, 0, width, height);
 
-  drawLand(ctx, width, height);
+  drawMap(ctx, map);
   drawLines(ctx, state, view.selectedLineId);
   drawStations(ctx, state, view);
 
@@ -39,36 +47,47 @@ export function renderScene(
   drawDragPreview(ctx, state, view);
 }
 
-function drawLand(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-): void {
-  ctx.fillStyle = theme.land;
-  roundRectPath(
-    ctx,
-    theme.safeMargin,
-    theme.safeMargin,
-    width - theme.safeMargin * 2,
-    height - theme.safeMargin * 2,
-    28,
-  );
-  ctx.fill();
+function drawMap(ctx: CanvasRenderingContext2D, map: GameMap): void {
+  drawPolygon(ctx, map.outline, theme.land);
+  ctx.strokeStyle = 'rgba(32, 36, 43, 0.12)';
+  ctx.lineWidth = 1.5;
+  drawPolygonPath(ctx, map.outline);
+  ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(32, 36, 43, 0.06)';
-  ctx.lineWidth = 1;
-  for (let x = theme.safeMargin + 60; x < width - theme.safeMargin; x += 80) {
-    ctx.beginPath();
-    ctx.moveTo(x, theme.safeMargin);
-    ctx.lineTo(x, height - theme.safeMargin);
-    ctx.stroke();
+  for (const park of map.parks) {
+    drawPolygon(ctx, park, theme.park);
   }
-  for (let y = theme.safeMargin + 60; y < height - theme.safeMargin; y += 80) {
-    ctx.beginPath();
-    ctx.moveTo(theme.safeMargin, y);
-    ctx.lineTo(width - theme.safeMargin, y);
-    ctx.stroke();
+  for (const water of map.water) {
+    drawPolygon(ctx, water, theme.water);
   }
+}
+
+function drawPolygon(
+  ctx: CanvasRenderingContext2D,
+  points: Point[],
+  fill: string,
+): void {
+  if (points.length < 3) {
+    return;
+  }
+  drawPolygonPath(ctx, points);
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
+function drawPolygonPath(
+  ctx: CanvasRenderingContext2D,
+  points: Point[],
+): void {
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) {
+      ctx.moveTo(point.x, point.y);
+    } else {
+      ctx.lineTo(point.x, point.y);
+    }
+  });
+  ctx.closePath();
 }
 
 function drawLines(
@@ -79,6 +98,19 @@ function drawLines(
   for (const line of state.lines) {
     const selected = line.id === selectedLineId;
     const width = selected ? theme.lineWidth + 2 : theme.lineWidth;
+
+    if (line.removing) {
+      drawLinePath(
+        ctx,
+        state,
+        line.stationIds,
+        theme.muted,
+        width,
+        true,
+        0.55,
+      );
+      continue;
+    }
 
     if (line.construction?.kind === 'create') {
       drawLinePath(
@@ -185,6 +217,10 @@ function drawStations(
   const targetId = view.drag?.hoverStationId ?? null;
 
   for (const station of state.stations) {
+    if (!station.active) {
+      continue;
+    }
+
     const isConnected = connected.has(station.id);
 
     if (!isConnected) {

@@ -35,11 +35,13 @@ export function Hud({
       </div>
 
       <div className="hud-readouts">
+        <span className="map-name">{t(hud.mapNameKey)}</span>
         <span>{t('hud.weekDay', { week: hud.week, day: hud.day, time: hud.clock })}</span>
         <span>{t('hud.delivered', { count: hud.delivered })}</span>
         <span>{t('hud.maxQueue', { count: hud.maxQueue })}</span>
         <span>{t('hud.lines', { count: hud.lineCount })}</span>
         <span>{t('hud.totalStations', { count: hud.totalLineStations })}</span>
+        <span>{t('hud.bridges', { used: hud.bridgesUsed, capacity: hud.bridgeCapacity })}</span>
       </div>
 
       <div className="hud-actions">

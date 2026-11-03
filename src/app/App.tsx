@@ -1,55 +1,88 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { demoMap } from '../game/demo-map';
+import { getMap } from '../game/maps';
 import { params } from '../game/params';
 import { Simulation } from '../game/simulation';
-import type { HudSnapshot } from '../game/types';
+import type { GameMap, HudSnapshot } from '../game/types';
 import { t } from '../i18n';
 import { renderScene, type DragState } from '../render/renderer';
 import { FailurePanel } from '../ui/FailurePanel';
 import { Hud } from '../ui/Hud';
 import { LineDock } from '../ui/LineDock';
+import { MapPicker } from '../ui/MapPicker';
+import { TutorialTip } from '../ui/TutorialTip';
+import { WeeklyModal } from '../ui/WeeklyModal';
 
 const SEED = 20261103;
 
-function createSimulation(): Simulation {
-  return new Simulation(demoMap, SEED);
+function createSimulation(map: GameMap): Simulation {
+  return new Simulation(map, SEED);
 }
 
 export function App() {
   const simulationRef = useRef<Simulation | null>(null);
-  if (simulationRef.current === null) {
-    simulationRef.current = createSimulation();
-  }
-
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const pausedRef = useRef(false);
   const speedRef = useRef(1);
   const selectedLineIdRef = useRef<string | null>(null);
+  const tutorialStepRef = useRef(0);
 
-  const [hud, setHud] = useState<HudSnapshot>(() => simulationRef.current!.getHud());
+  const [mapId, setMapId] = useState<string | null>(null);
+  const [hud, setHud] = useState<HudSnapshot | null>(null);
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [dragActive, setDragActive] = useState(false);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
-  const [rewireMode, setRewireMode] = useState(false);
+  const [rewireMode, setRewireMode] = useState<'start' | 'end' | null>(null);
+  const [tutorialStep, setTutorialStep] = useState(99);
+  const [notice, setNotice] = useState<string | null>(null);
 
   selectedLineIdRef.current = selectedLineId;
+  tutorialStepRef.current = tutorialStep;
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setNotice(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (
       selectedLineId &&
+      hud &&
       !hud.lines.some((line) => line.id === selectedLineId)
     ) {
       setSelectedLineId(null);
     }
-  }, [hud.lines, selectedLineId]);
+  }, [hud, selectedLineId]);
+
+  useEffect(() => {
+    if (!hud || tutorialStep >= 99) {
+      return;
+    }
+
+    if (tutorialStep === 1 && hud.delivered > 0) {
+      setTutorialStep(2);
+    } else if (tutorialStep === 2 && hud.weekly) {
+      setTutorialStep(3);
+    } else if (tutorialStep === 3 && !hud.weekly && hud.week >= 2) {
+      setTutorialStep(4);
+    } else if (
+      tutorialStep === 4 &&
+      hud.maxQueue >= params.stations.capacity
+    ) {
+      setTutorialStep(5);
+    }
+  }, [hud, tutorialStep]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) {
+    const simulation = simulationRef.current;
+    if (!canvas || !simulation) {
       return;
     }
 
@@ -71,16 +104,16 @@ export function App() {
     const hudInterval = 1000 / params.ui.hudRefreshHz;
 
     const frame = (now: number) => {
-      const simulation = simulationRef.current;
+      const activeSimulation = simulationRef.current;
       const elapsed = Math.min(0.1, (now - lastTime) / 1000);
       lastTime = now;
 
-      if (simulation) {
-        if (!pausedRef.current && !simulation.state.failed) {
+      if (activeSimulation) {
+        if (!pausedRef.current && !activeSimulation.state.failed) {
           accumulator += elapsed * speedRef.current;
           let steps = 0;
           while (accumulator >= tickStep && steps < 5) {
-            simulation.tick(tickStep);
+            activeSimulation.tick(tickStep);
             accumulator -= tickStep;
             steps += 1;
           }
@@ -88,13 +121,13 @@ export function App() {
           accumulator = 0;
         }
 
-        renderScene(ctx, simulation.state, {
+        renderScene(ctx, activeSimulation.state, activeSimulation.map, {
           drag: dragRef.current,
           selectedLineId: selectedLineIdRef.current,
         });
 
         if (now - lastHudTime >= hudInterval) {
-          setHud(simulation.getHud());
+          setHud(activeSimulation.getHud());
           lastHudTime = now;
         }
       }
@@ -104,6 +137,29 @@ export function App() {
 
     animationFrame = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(animationFrame);
+  }, [mapId]);
+
+  const selectMap = useCallback((id: string) => {
+    const map = getMap(id);
+    if (!map) {
+      return;
+    }
+
+    const simulation = createSimulation(map);
+    simulationRef.current = simulation;
+    dragRef.current = null;
+    pausedRef.current = map.tutorial;
+    speedRef.current = 1;
+    setMapId(id);
+    setHud(simulation.getHud());
+    setPaused(map.tutorial);
+    setSpeed(1);
+    setDragActive(false);
+    setSelectedLineId(null);
+    setSelectedColorIndex(0);
+    setRewireMode(null);
+    setTutorialStep(map.tutorial ? 0 : 99);
+    setNotice(null);
   }, []);
 
   const pointerToLogical = (
@@ -127,8 +183,9 @@ export function App() {
     return (
       simulation.state.stations.find(
         (station) =>
+          station.active &&
           Math.hypot(station.x - x, station.y - y) <=
-          params.ui.stationHitRadiusPx,
+            params.ui.stationHitRadiusPx,
       ) ?? null
     );
   };
@@ -152,7 +209,7 @@ export function App() {
       return selectedLineId === null;
     }
 
-    if (line.construction) {
+    if (line.construction || line.removing) {
       return false;
     }
 
@@ -179,10 +236,17 @@ export function App() {
         station &&
         line &&
         !line.construction &&
+        !line.removing &&
         !line.stationIds.includes(station.id)
       ) {
-        simulation.replaceLastStation(line.id, station.id);
-        setRewireMode(false);
+        const changed =
+          rewireMode === 'start'
+            ? simulation.replaceFirstStation(line.id, station.id)
+            : simulation.replaceLastStation(line.id, station.id);
+        if (!changed && simulation.lastActionError === 'bridge') {
+          setNotice(t('hint.needBridge'));
+        }
+        setRewireMode(null);
         setHud(simulation.getHud());
       }
       return;
@@ -247,10 +311,17 @@ export function App() {
     const point = pointerToLogical(event);
     const target = findStationAt(point.x, point.y);
     const line = getSelectedLine();
+    let failedBecauseBridge = false;
 
     if (line) {
       if (target && !line.stationIds.includes(target.id)) {
-        simulation.appendStation(line.id, target.id, drag.endpoint);
+        const changed = simulation.appendStation(
+          line.id,
+          target.id,
+          drag.endpoint,
+        );
+        failedBecauseBridge =
+          !changed && simulation.lastActionError === 'bridge';
       } else if (
         !target &&
         line.stationIds.length > params.lines.minStationsPerLine
@@ -268,9 +339,24 @@ export function App() {
       );
       if (lineId) {
         setSelectedLineId(lineId);
+        if (
+          tutorialStepRef.current === 0 &&
+          simulation.map.tutorial
+        ) {
+          pausedRef.current = false;
+          setPaused(false);
+          setTutorialStep(1);
+        }
+      } else {
+        failedBecauseBridge = simulation.lastActionError === 'bridge';
       }
     }
 
+    if (failedBecauseBridge) {
+      setNotice(t('hint.needBridge'));
+    } else {
+      setNotice(null);
+    }
     setHud(simulation.getHud());
     clearDrag(event);
   };
@@ -281,22 +367,19 @@ export function App() {
     clearDrag(event);
   };
 
-  const selectSlot = useCallback(
-    (colorIndex: number) => {
-      const simulation = simulationRef.current;
-      if (!simulation) {
-        return;
-      }
+  const selectSlot = useCallback((colorIndex: number) => {
+    const simulation = simulationRef.current;
+    if (!simulation) {
+      return;
+    }
 
-      const line = simulation.state.lines.find(
-        (entry) => entry.colorIndex === colorIndex,
-      );
-      setSelectedColorIndex(colorIndex);
-      setSelectedLineId(line?.id ?? null);
-      setRewireMode(false);
-    },
-    [],
-  );
+    const line = simulation.state.lines.find(
+      (entry) => entry.colorIndex === colorIndex,
+    );
+    setSelectedColorIndex(colorIndex);
+    setSelectedLineId(line?.id ?? null);
+    setRewireMode(null);
+  }, []);
 
   const deleteSelectedLine = useCallback(() => {
     const simulation = simulationRef.current;
@@ -305,7 +388,7 @@ export function App() {
       return;
     }
     simulation.deleteLine(line.id);
-    setRewireMode(false);
+    setRewireMode(null);
     setHud(simulation.getHud());
   }, [selectedLineId]);
 
@@ -316,26 +399,29 @@ export function App() {
       return;
     }
     simulation.removeLastStation(line.id);
-    setRewireMode(false);
+    setRewireMode(null);
     setHud(simulation.getHud());
   }, [selectedLineId]);
 
-  const toggleRewire = useCallback(() => {
-    const line = getSelectedLine();
-    if (!line || line.construction) {
-      return;
-    }
-    setRewireMode((current) => !current);
-  }, [selectedLineId]);
+  const toggleRewire = useCallback(
+    (endpoint: 'start' | 'end') => {
+      const line = getSelectedLine();
+      if (!line || line.construction || line.removing) {
+        return;
+      }
+      setRewireMode((current) => (current === endpoint ? null : endpoint));
+    },
+    [selectedLineId],
+  );
 
   const togglePause = useCallback(() => {
-    if (hud.failed) {
+    if (hud?.failed) {
       return;
     }
     const next = !pausedRef.current;
     pausedRef.current = next;
     setPaused(next);
-  }, [hud.failed]);
+  }, [hud?.failed]);
 
   const toggleSpeed = useCallback(() => {
     const next = speedRef.current === 1 ? 2 : 1;
@@ -344,33 +430,73 @@ export function App() {
   }, []);
 
   const restart = useCallback(() => {
-    simulationRef.current = createSimulation();
+    if (!mapId) {
+      return;
+    }
+    const map = getMap(mapId);
+    if (!map) {
+      return;
+    }
+
+    const simulation = createSimulation(map);
+    simulationRef.current = simulation;
     dragRef.current = null;
-    pausedRef.current = false;
+    pausedRef.current = map.tutorial;
     speedRef.current = 1;
     setDragActive(false);
-    setPaused(false);
+    setPaused(map.tutorial);
     setSpeed(1);
     setSelectedLineId(null);
     setSelectedColorIndex(0);
-    setRewireMode(false);
-    setHud(simulationRef.current.getHud());
+    setRewireMode(null);
+    setTutorialStep(map.tutorial ? 0 : 99);
+    setNotice(null);
+    setHud(simulation.getHud());
+  }, [mapId]);
+
+  const skipTutorial = useCallback(() => {
+    pausedRef.current = false;
+    setPaused(false);
+    setTutorialStep(99);
   }, []);
 
+  const showWeeklyCards = useCallback(() => {
+    const simulation = simulationRef.current;
+    if (!simulation) {
+      return;
+    }
+    simulation.advanceWeeklyToCards();
+    setHud(simulation.getHud());
+  }, []);
+
+  const chooseUpgrade = useCallback((cardId: string) => {
+    const simulation = simulationRef.current;
+    if (!simulation) {
+      return;
+    }
+    simulation.chooseUpgrade(cardId);
+    setHud(simulation.getHud());
+  }, []);
+
+  if (!mapId || !hud) {
+    return <MapPicker onSelect={selectMap} />;
+  }
+
   const selectedLine = hud.lines.find((line) => line.id === selectedLineId) ?? null;
-  const hint = hud.failed
+  const baseHint = hud.failed
     ? ''
     : rewireMode
       ? t('hint.rewire')
       : dragActive
         ? t('hint.release')
         : selectedLine
-          ? selectedLine.constructionKind
+          ? selectedLine.constructionKind || selectedLine.removing
             ? t('hint.lineLocked')
             : t('hint.appendSelected')
           : hud.lineCount > 0
             ? t('hint.drawNewLine')
             : t('hint.drawLine');
+  const hint = notice ?? baseHint;
 
   return (
     <div className="app">
@@ -406,11 +532,24 @@ export function App() {
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
         />
+        {tutorialStep <= 5 && hud.weekly === null && (
+          <TutorialTip step={tutorialStep} onSkip={skipTutorial} />
+        )}
         {hud.failed && hud.failure && (
           <FailurePanel
             failure={hud.failure}
             delivered={hud.delivered}
             onRestart={restart}
+          />
+        )}
+        {hud.weekly && (
+          <WeeklyModal
+            weekly={hud.weekly}
+            tutorialHint={
+              tutorialStep === 3 ? t('tutorial.step3') : undefined
+            }
+            onShowCards={showWeeklyCards}
+            onChoose={chooseUpgrade}
           />
         )}
       </main>

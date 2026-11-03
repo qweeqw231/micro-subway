@@ -289,6 +289,7 @@ export function estimateRemainingCost(
     const line = lineById(state, step.lineId);
     if (
       !line ||
+      line.removing ||
       (line.construction !== null &&
         line.id !== allowConstructingLineId)
     ) {
@@ -334,6 +335,7 @@ export function isRouteValid(
     const line = lineById(state, step.lineId);
     if (
       !line ||
+      line.removing ||
       (line.construction !== null &&
         line.id !== allowConstructingLineId)
     ) {
@@ -376,7 +378,7 @@ function reconstruct(target: QueueState, previous: Map<string, Previous>): Route
 }
 
 function isActiveLine(line: Line): boolean {
-  return line.construction === null && line.stationIds.length >= 2;
+  return line.construction === null && !line.removing && line.stationIds.length >= 2;
 }
 
 function availableDirections(line: Line, index: number): Array<1 | -1> {
@@ -413,7 +415,7 @@ function segmentCost(
 
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   return (
-    distance / params.trains.speedPxPerSec +
+    distance / (params.trains.speedPxPerSec * state.speedMultiplier) +
     params.trains.accelPenaltySec +
     params.trains.dwellBaseSec
   );

@@ -1,4 +1,5 @@
 import { demoMap } from './demo-map';
+import { countWaterCrossings } from './map-utils';
 import { params } from './params';
 import { createRng, type Rng } from './rng';
 import {
@@ -7,7 +8,7 @@ import {
   isRouteValid,
 } from './routing';
 import type {
-  DemoMap,
+  GameMap,
   HudSnapshot,
   Line,
   Passenger,
@@ -16,6 +17,8 @@ import type {
   Station,
   StationType,
   Train,
+  UpgradeCard,
+  UpgradeKind,
 } from './types';
 
 type DestinationPhase = 'offpeak' | 'morning' | 'evening';
@@ -25,16 +28,20 @@ const DEFAULT_SEED = 20261103;
 
 export class Simulation {
   readonly state: SimState;
+  readonly map: GameMap;
+  lastActionError: 'bridge' | null = null;
 
-  private readonly map: DemoMap;
   private readonly rng: Rng;
   private readonly routeCache = new Map<string, RoutePlan | null>();
   private lastRouteRefreshSec = 0;
   private nextPassengerId = 1;
 
-  constructor(map: DemoMap = demoMap, seed = DEFAULT_SEED) {
+  constructor(map: GameMap = demoMap, seed = DEFAULT_SEED) {
     this.map = map;
     this.rng = createRng(seed);
+    const mapTuning = (
+      params.maps as Record<string, { initialBridgeTokens?: number }>
+    )[map.id];
 
     this.state = {
       tick: 0,
@@ -46,6 +53,7 @@ export class Simulation {
       trains: [],
       stations: map.stations.map((station) => ({
         ...station,
+        active: station.appearWeek <= 1,
         capacity: params.stations.capacity,
         queue: [],
         overloadSec: 0,
@@ -59,13 +67,22 @@ export class Simulation {
       },
       failed: false,
       failureStationId: null,
+      unlockedLineSlots: params.lines.startUnlocked,
+      bridgeCapacity: mapTuning?.initialBridgeTokens ?? 0,
+      speedMultiplier: 1,
+      graceBonusSec: 0,
+      speedStacks: 0,
+      graceStacks: 0,
+      weekly: null,
+      weekStartDelivered: 0,
+      weekMaxQueue: 0,
     };
   }
 
   createLine(stationIds: string[], colorIndex: number): string | null {
     if (
       colorIndex < 0 ||
-      colorIndex >= params.lines.startUnlocked ||
+      colorIndex >= this.state.unlockedLineSlots ||
       this.state.lines.some((line) => line.colorIndex === colorIndex)
     ) {
       return null;
@@ -84,7 +101,11 @@ export class Simulation {
     }
 
     const stations = stationIds.map((id) => this.tryStation(id));
-    if (stations.some((station) => station === undefined)) {
+    if (stations.some((station) => !station || !station.active)) {
+      return null;
+    }
+
+    if (!this.canUseBridges(null, stationIds)) {
       return null;
     }
 
@@ -99,10 +120,44 @@ export class Simulation {
           this.state.elapsedSec + params.lines.construction.newLineSec,
         newStationIds: [...stationIds],
       },
+      removing: false,
+      carriageLevel: 0,
     };
 
+    this.lastActionError = null;
     this.state.lines.push(line);
     return line.id;
+  }
+
+  private effectiveStationIds(line: Line): string[] {
+    return line.construction?.newStationIds ?? line.stationIds;
+  }
+
+  private usedBridges(excludeLineId: string | null, extraIds: string[] = []): number {
+    let used = extraIds.length > 0 ? countWaterCrossings(extraIds, this.map) : 0;
+
+    for (const line of this.state.lines) {
+      if (line.id === excludeLineId) {
+        continue;
+      }
+      used += countWaterCrossings(this.effectiveStationIds(line), this.map);
+    }
+
+    return used;
+  }
+
+  private canUseBridges(
+    excludeLineId: string | null,
+    stationIds: string[],
+  ): boolean {
+    const used = this.usedBridges(excludeLineId, stationIds);
+    if (used > this.state.bridgeCapacity) {
+      this.lastActionError = 'bridge';
+      return false;
+    }
+
+    this.lastActionError = null;
+    return true;
   }
 
   private getRoute(stationId: string, destType: StationType): RoutePlan | null {
@@ -133,7 +188,9 @@ export class Simulation {
     if (
       !line ||
       line.construction ||
+      line.removing ||
       !station ||
+      !station.active ||
       line.stationIds.includes(stationId) ||
       line.stationIds.length >= params.lines.maxStationsPerLine
     ) {
@@ -145,6 +202,10 @@ export class Simulation {
         ? [stationId, ...line.stationIds]
         : [...line.stationIds, stationId];
 
+    if (!this.canUseBridges(line.id, newStationIds)) {
+      return false;
+    }
+
     this.startEdit(line, newStationIds, this.editDuration(1));
     return true;
   }
@@ -154,6 +215,7 @@ export class Simulation {
     if (
       !line ||
       line.construction ||
+      line.removing ||
       line.stationIds.length <= params.lines.minStationsPerLine
     ) {
       return false;
@@ -172,6 +234,7 @@ export class Simulation {
     if (
       !line ||
       line.construction ||
+      line.removing ||
       line.stationIds.length <= params.lines.minStationsPerLine
     ) {
       return false;
@@ -191,7 +254,9 @@ export class Simulation {
     if (
       !line ||
       line.construction ||
+      line.removing ||
       !station ||
+      !station.active ||
       line.stationIds.includes(stationId) ||
       line.stationIds.length < 2
     ) {
@@ -199,13 +264,39 @@ export class Simulation {
     }
 
     const newStationIds = [...line.stationIds.slice(0, -1), stationId];
+    if (!this.canUseBridges(line.id, newStationIds)) {
+      return false;
+    }
+    this.startEdit(line, newStationIds, this.editDuration(2));
+    return true;
+  }
+
+  replaceFirstStation(lineId: string, stationId: string): boolean {
+    const line = this.tryLine(lineId);
+    const station = this.tryStation(stationId);
+    if (
+      !line ||
+      line.construction ||
+      line.removing ||
+      !station ||
+      !station.active ||
+      line.stationIds.includes(stationId) ||
+      line.stationIds.length < 2
+    ) {
+      return false;
+    }
+
+    const newStationIds = [stationId, ...line.stationIds.slice(1)];
+    if (!this.canUseBridges(line.id, newStationIds)) {
+      return false;
+    }
     this.startEdit(line, newStationIds, this.editDuration(2));
     return true;
   }
 
   deleteLine(lineId: string): boolean {
     const line = this.tryLine(lineId);
-    if (!line || line.construction) {
+    if (!line || line.construction || line.removing) {
       return false;
     }
 
@@ -219,13 +310,20 @@ export class Simulation {
   }
 
   tick(dt: number): void {
-    if (this.state.failed) {
+    if (this.state.failed || this.state.weekly) {
       return;
     }
 
+    const previousWeek = this.state.week;
     this.state.tick += 1;
     this.state.elapsedSec += dt;
     this.refreshClock();
+
+    if (this.state.week > previousWeek) {
+      this.startWeekly(previousWeek);
+      return;
+    }
+
     this.updateConstructions();
     if (
       this.state.elapsedSec - this.lastRouteRefreshSec >=
@@ -236,6 +334,214 @@ export class Simulation {
     this.updateSpawns();
     this.updateTrains(dt);
     this.updateOverload(dt);
+  }
+
+  advanceWeeklyToCards(): void {
+    if (this.state.weekly?.phase === 'summary') {
+      this.state.weekly.phase = 'cards';
+    }
+  }
+
+  chooseUpgrade(cardId: string): void {
+    const weekly = this.state.weekly;
+    if (!weekly || weekly.phase !== 'cards') {
+      return;
+    }
+
+    const card = weekly.cards.find((entry) => entry.id === cardId);
+    if (!card) {
+      return;
+    }
+
+    this.applyUpgrade(card.kind);
+    this.state.weekly = null;
+    this.state.weekStartDelivered = this.state.stats.delivered;
+    this.state.weekMaxQueue = 0;
+    this.activateStationsForWeek();
+    if (
+      this.state.week >= params.lines.thirdUnlockWeek &&
+      this.state.unlockedLineSlots < 3
+    ) {
+      this.state.unlockedLineSlots = 3;
+    }
+    this.handleNetworkChange();
+  }
+
+  private startWeekly(completedWeek: number): void {
+    const summary = {
+      completedWeek,
+      delivered: this.state.stats.delivered - this.state.weekStartDelivered,
+      maxQueue: this.state.weekMaxQueue,
+      newStations: this.map.stations.filter(
+        (station) => station.appearWeek === this.state.week,
+      ).length,
+    };
+    const special = (
+      params.upgrades.specialWeeks as number[]
+    ).includes(completedWeek);
+    const count = special
+      ? params.upgrades.specialCardsPerWeek
+      : params.upgrades.cardsPerWeek;
+
+    this.state.weekly = {
+      phase: 'summary',
+      summary,
+      cards: this.drawUpgradeCards(count),
+    };
+  }
+
+  private drawUpgradeCards(count: number): UpgradeCard[] {
+    const candidates = this.availableUpgradeKinds();
+    const cards: UpgradeCard[] = [];
+
+    while (cards.length < count && candidates.length > 0) {
+      const total = candidates.reduce((sum, entry) => sum + entry.weight, 0);
+      let roll = this.rng() * total;
+      let selectedIndex = candidates.length - 1;
+
+      for (let index = 0; index < candidates.length; index += 1) {
+        roll -= candidates[index].weight;
+        if (roll <= 0) {
+          selectedIndex = index;
+          break;
+        }
+      }
+
+      const selected = candidates.splice(selectedIndex, 1)[0];
+      cards.push({ id: `card-${selected.kind}`, kind: selected.kind });
+    }
+
+    return cards;
+  }
+
+  private availableUpgradeKinds(): Array<{ kind: UpgradeKind; weight: number }> {
+    const weights = params.upgrades.weights;
+    const caps = params.upgrades.caps;
+    const lines = this.state.lines.filter((line) => !line.removing);
+    const activeStations = this.state.stations.filter((station) => station.active);
+    const result: Array<{ kind: UpgradeKind; weight: number }> = [];
+
+    if (
+      lines.some(
+        (line) =>
+          this.state.trains.filter((train) => train.lineId === line.id).length <
+          caps.newTrainMaxPerLine,
+      )
+    ) {
+      result.push({ kind: 'train', weight: weights.newTrain });
+    }
+    if (lines.some((line) => line.carriageLevel < caps.carriageMaxPerLine)) {
+      result.push({ kind: 'carriage', weight: weights.carriage });
+    }
+    if (this.state.unlockedLineSlots < params.lines.max) {
+      result.push({ kind: 'lineSlot', weight: weights.newLine });
+    }
+    if (this.state.bridgeCapacity < caps.bridgeMax) {
+      result.push({ kind: 'bridge', weight: weights.bridge });
+    }
+    if (
+      activeStations.some((station) => station.capacity < caps.stationCapacityMax)
+    ) {
+      result.push({ kind: 'stationExpansion', weight: weights.stationExpansion });
+    }
+    if (this.state.speedStacks < caps.speedMaxStacks) {
+      result.push({ kind: 'speed', weight: weights.speed });
+    }
+    if (this.state.graceStacks < caps.graceMaxStacks) {
+      result.push({ kind: 'grace', weight: weights.grace });
+    }
+
+    return result;
+  }
+
+  private applyUpgrade(kind: UpgradeKind): void {
+    if (kind === 'train') {
+      this.addTrainToBestLine();
+    }
+
+    if (kind === 'carriage') {
+      const line = this.state.lines
+        .filter((entry) => !entry.removing)
+        .sort((a, b) => a.carriageLevel - b.carriageLevel)[0];
+      if (line && line.carriageLevel < params.upgrades.caps.carriageMaxPerLine) {
+        line.carriageLevel += 1;
+        for (const train of this.state.trains) {
+          if (train.lineId === line.id) {
+            train.capacity += params.trains.carriageCapacity;
+          }
+        }
+      }
+    }
+
+    if (kind === 'lineSlot') {
+      this.state.unlockedLineSlots = Math.min(
+        params.lines.max,
+        this.state.unlockedLineSlots + 1,
+      );
+    }
+
+    if (kind === 'bridge') {
+      this.state.bridgeCapacity = Math.min(
+        params.upgrades.caps.bridgeMax,
+        this.state.bridgeCapacity + 1,
+      );
+    }
+
+    if (kind === 'stationExpansion') {
+      const stations = this.state.stations
+        .filter((station) => station.active)
+        .sort((a, b) => b.queue.length - a.queue.length)
+        .slice(0, params.stations.stationsPerExpansion);
+      for (const station of stations) {
+        station.capacity = Math.min(
+          params.upgrades.caps.stationCapacityMax,
+          station.capacity + params.stations.capacityPerExpansion,
+        );
+      }
+    }
+
+    if (kind === 'speed') {
+      this.state.speedStacks = Math.min(
+        params.upgrades.caps.speedMaxStacks,
+        this.state.speedStacks + 1,
+      );
+      this.state.speedMultiplier = Math.pow(
+        params.trains.speedUpgradeFactor,
+        this.state.speedStacks,
+      );
+    }
+
+    if (kind === 'grace') {
+      this.state.graceStacks = Math.min(
+        params.upgrades.caps.graceMaxStacks,
+        this.state.graceStacks + 1,
+      );
+      this.state.graceBonusSec =
+        this.state.graceStacks * params.stations.graceUpgradeSec;
+    }
+  }
+
+  private addTrainToBestLine(): void {
+    const candidates = this.state.lines
+      .filter((line) => !line.removing && !line.construction)
+      .map((line) => ({
+        line,
+        count: this.state.trains.filter((train) => train.lineId === line.id).length,
+      }))
+      .filter((entry) => entry.count < params.trains.maxTrainsPerLine)
+      .sort((a, b) => a.count - b.count);
+
+    if (candidates[0]) {
+      this.addTrainToLine(candidates[0].line);
+    }
+  }
+
+  private activateStationsForWeek(): void {
+    for (const station of this.state.stations) {
+      if (station.appearWeek <= this.state.week) {
+        station.active = true;
+      }
+    }
   }
 
   getHud(): HudSnapshot {
@@ -260,6 +566,8 @@ export class Simulation {
     ).size;
 
     return {
+      mapId: this.map.id,
+      mapNameKey: this.map.nameKey,
       week: this.state.week,
       day: (this.state.dayIndex % 7) + 1,
       clock,
@@ -267,7 +575,9 @@ export class Simulation {
       maxQueue: this.state.stats.maxQueue,
       lineCount: this.state.lines.length,
       totalLineStations,
-      lineSlots: params.lines.startUnlocked,
+      lineSlots: this.state.unlockedLineSlots,
+      bridgesUsed: this.usedBridges(null),
+      bridgeCapacity: this.state.bridgeCapacity,
       lines: this.state.lines.map((line) => ({
         id: line.id,
         colorIndex: line.colorIndex,
@@ -277,7 +587,13 @@ export class Simulation {
         constructionSec: line.construction
           ? Math.max(0, line.construction.endSec - this.state.elapsedSec)
           : 0,
+        removing: line.removing,
+        trainCount: this.state.trains.filter(
+          (train) => train.lineId === line.id,
+        ).length,
+        carriageLevel: line.carriageLevel,
       })),
+      weekly: this.state.weekly,
       failed: this.state.failed,
       failure: failureStation
         ? {
@@ -344,7 +660,15 @@ export class Simulation {
       }
 
       if (construction.kind === 'delete') {
-        this.removeLine(line);
+        line.construction = null;
+        line.removing = true;
+        if (
+          !this.state.trains.some((train) => train.lineId === line.id)
+        ) {
+          this.finishLineRemoval(line);
+        } else {
+          this.handleNetworkChange();
+        }
         continue;
       }
 
@@ -352,25 +676,7 @@ export class Simulation {
     }
   }
 
-  private removeLine(line: Line): void {
-    const trains = this.state.trains.filter((train) => train.lineId === line.id);
-
-    for (const train of trains) {
-      const stationId =
-        line.stationIds[train.nextIndex] ?? line.stationIds[train.currentIndex];
-      if (stationId) {
-        const station = this.tryStation(stationId);
-        if (station) {
-          for (const passenger of train.passengers) {
-            passenger.route = null;
-            passenger.stepIndex = 0;
-            passenger.rerouteCheck = false;
-            station.queue.push(passenger);
-          }
-        }
-      }
-    }
-
+  private finishLineRemoval(line: Line): void {
     this.state.trains = this.state.trains.filter(
       (train) => train.lineId !== line.id,
     );
@@ -386,20 +692,35 @@ export class Simulation {
   }
 
   private createTrain(line: Line): void {
-    if (this.state.trains.some((train) => train.lineId === line.id)) {
-      return;
+    this.addTrainToLine(line);
+  }
+
+  private addTrainToLine(line: Line): boolean {
+    const existing = this.state.trains.filter(
+      (train) => train.lineId === line.id,
+    );
+    if (
+      existing.length >= params.trains.maxTrainsPerLine ||
+      line.stationIds.length < 2
+    ) {
+      return false;
     }
 
+    const startIndex = existing.length === 0 ? 0 : line.stationIds.length - 1;
+    const direction: 1 | -1 = startIndex === 0 ? 1 : -1;
+    const nextIndex = startIndex + direction;
     const train: Train = {
-      id: `T${line.id}`,
+      id: `T${line.id}-${existing.length + 1}`,
       lineId: line.id,
-      currentIndex: 0,
-      nextIndex: 1,
-      direction: 1,
+      currentIndex: startIndex,
+      nextIndex,
+      direction,
       progress: 0,
       state: 'dwell',
       dwellSec: params.trains.dwellBaseSec,
-      capacity: params.trains.capacity,
+      capacity:
+        params.trains.capacity +
+        line.carriageLevel * params.trains.carriageCapacity,
       passengers: [],
     };
 
@@ -409,6 +730,7 @@ export class Simulation {
       params.trains.dwellMaxSec,
       params.trains.dwellBaseSec + boarded * params.trains.dwellPerPassengerSec,
     );
+    return true;
   }
 
   private normalizeTrains(line: Line, oldStationIds: string[]): void {
@@ -646,7 +968,7 @@ export class Simulation {
   }
 
   private updateTrains(dt: number): void {
-    for (const train of this.state.trains) {
+    for (const train of [...this.state.trains]) {
       const line = this.tryLine(train.lineId);
       if (!line || line.stationIds.length < 2) {
         continue;
@@ -666,7 +988,9 @@ export class Simulation {
       const distance = Math.hypot(to.x - from.x, to.y - from.y);
       const duration = Math.max(
         0.1,
-        distance / params.trains.speedPxPerSec + params.trains.accelPenaltySec,
+        distance /
+          (params.trains.speedPxPerSec * this.state.speedMultiplier) +
+          params.trains.accelPenaltySec,
       );
 
       train.progress += dt / duration;
@@ -681,6 +1005,28 @@ export class Simulation {
   private arriveAtStation(train: Train, line: Line): void {
     const currentId = line.stationIds[train.currentIndex];
     this.setNextDirection(train, line);
+
+    if (line.removing) {
+      const station = this.stationById(currentId);
+      for (const passenger of train.passengers) {
+        passenger.route = null;
+        passenger.stepIndex = 0;
+        passenger.rerouteCheck = false;
+        station.queue.push(passenger);
+      }
+      train.passengers = [];
+      this.state.trains = this.state.trains.filter(
+        (entry) => entry.id !== train.id,
+      );
+      if (
+        !this.state.trains.some(
+          (entry) => entry.lineId === line.id,
+        )
+      ) {
+        this.finishLineRemoval(line);
+      }
+      return;
+    }
 
     const delivered = this.processOnboard(train, line, currentId);
     const boarded = this.boardAtStation(train, line);
@@ -791,7 +1137,7 @@ export class Simulation {
   }
 
   private boardAtStation(train: Train, line: Line): number {
-    if (line.construction) {
+    if (line.construction || line.removing) {
       return 0;
     }
 
@@ -857,7 +1203,8 @@ export class Simulation {
         station.overloadSec += dt;
         if (
           !this.state.failed &&
-          station.overloadSec >= this.map.overloadGraceSec
+          station.overloadSec >=
+            this.map.overloadGraceSec + this.state.graceBonusSec
         ) {
           this.state.failed = true;
           this.state.failureStationId = station.id;
@@ -871,6 +1218,10 @@ export class Simulation {
 
       this.state.stats.maxQueue = Math.max(
         this.state.stats.maxQueue,
+        station.queue.length,
+      );
+      this.state.weekMaxQueue = Math.max(
+        this.state.weekMaxQueue,
         station.queue.length,
       );
     }
@@ -942,8 +1293,16 @@ export class Simulation {
   }
 
   private isStationActive(stationId: string): boolean {
+    const station = this.tryStation(stationId);
+    if (!station || !station.active) {
+      return false;
+    }
+
     return this.state.lines.some(
-      (line) => line.construction === null && line.stationIds.includes(stationId),
+      (line) =>
+        line.construction === null &&
+        !line.removing &&
+        line.stationIds.includes(stationId),
     );
   }
 

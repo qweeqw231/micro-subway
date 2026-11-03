@@ -204,6 +204,207 @@ button:focus-visible {
   opacity: 0.4;
 }
 
+.map-picker {
+  width: min(1280px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+.map-picker-head {
+  max-width: 740px;
+  margin-bottom: 22px;
+}
+
+.map-picker-head h1 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 4vw, 44px);
+  letter-spacing: -0.04em;
+}
+
+.map-picker-head p {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.map-picker-head span {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.map-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ded8cb;
+  border-radius: 18px;
+  background: #fffdf7;
+  overflow: hidden;
+  box-shadow: 0 14px 38px rgb(60 50 35 / 6%);
+}
+
+.mini-map {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: block;
+  background: #f5f2ea;
+}
+
+.map-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px;
+}
+
+.map-card-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.map-card-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.difficulty {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.map-card-body p {
+  min-height: 3em;
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.map-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: #6b7280;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-card-body .primary {
+  margin-top: auto;
+  border-color: #20242b;
+  background: #20242b;
+  color: #fffdf7;
+}
+
+.map-name {
+  font-weight: 650;
+}
+
+.weekly-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(32 36 43 / 28%);
+  backdrop-filter: blur(3px);
+  z-index: 3;
+}
+
+.weekly-panel {
+  width: min(720px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #ded8cb;
+  border-radius: 18px;
+  background: #fffdf7;
+  box-shadow: 0 20px 50px rgb(32 36 43 / 18%);
+}
+
+.weekly-panel h2 {
+  margin: 0 0 8px;
+  font-size: 26px;
+}
+
+.weekly-panel .tutorial-hint {
+  margin: 0 0 12px;
+  color: #0072b2;
+  font-size: 14px;
+}
+
+.weekly-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 16px 0 20px;
+  font-size: 14px;
+}
+
+.weekly-panel .primary {
+  border-color: #20242b;
+  background: #20242b;
+  color: #fffdf7;
+}
+
+.upgrade-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.upgrade-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 150px;
+  padding: 16px;
+  text-align: left;
+  border-radius: 14px;
+  background: #f8f4e9;
+}
+
+.upgrade-card strong {
+  font-size: 16px;
+}
+
+.upgrade-card span {
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tutorial-tip {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 12px;
+  border: 1px solid #ded8cb;
+  border-radius: 12px;
+  background: #fffdf7;
+  box-shadow: 0 8px 24px rgb(32 36 43 / 10%);
+  font-size: 13px;
+}
+
+.tutorial-tip button {
+  flex: none;
+  min-height: 30px;
+  font-size: 12px;
+}
+
 .stage {
   position: relative;
   border: 1px solid #ded8cb;
