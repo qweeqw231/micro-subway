@@ -13,6 +13,7 @@ import type {
   Line,
   Passenger,
   RoutePlan,
+  SimSnapshot,
   SimState,
   Station,
   StationType,
@@ -29,6 +30,7 @@ const DEFAULT_SEED = 20261103;
 export class Simulation {
   readonly state: SimState;
   readonly map: GameMap;
+  readonly seed: number;
   lastActionError: 'bridge' | null = null;
 
   private readonly rng: Rng;
@@ -38,6 +40,7 @@ export class Simulation {
 
   constructor(map: GameMap = demoMap, seed = DEFAULT_SEED) {
     this.map = map;
+    this.seed = seed;
     this.rng = createRng(seed);
     const mapTuning = (
       params.maps as Record<string, { initialBridgeTokens?: number }>
@@ -69,9 +72,7 @@ export class Simulation {
       failureStationId: null,
       unlockedLineSlots: params.lines.startUnlocked,
       bridgeCapacity: mapTuning?.initialBridgeTokens ?? 0,
-      speedMultiplier: 1,
       graceBonusSec: 0,
-      speedStacks: 0,
       graceStacks: 0,
       weekly: null,
       weekStartDelivered: 0,
@@ -122,11 +123,32 @@ export class Simulation {
       },
       removing: false,
       carriageLevel: 0,
+      speedStacks: 0,
     };
 
     this.lastActionError = null;
     this.state.lines.push(line);
     return line.id;
+  }
+
+  exportSnapshot(): SimSnapshot {
+    return {
+      seed: this.seed,
+      rngState: this.rng.getState(),
+      nextPassengerId: this.nextPassengerId,
+      lastRouteRefreshSec: this.lastRouteRefreshSec,
+      state: this.state,
+    };
+  }
+
+  static fromSnapshot(map: GameMap, snapshot: SimSnapshot): Simulation {
+    const simulation = new Simulation(map, snapshot.seed);
+    simulation.rng.setState(snapshot.rngState);
+    simulation.nextPassengerId = snapshot.nextPassengerId;
+    simulation.lastRouteRefreshSec = snapshot.lastRouteRefreshSec;
+    Object.assign(simulation.state, snapshot.state);
+    simulation.routeCache.clear();
+    return simulation;
   }
 
   private effectiveStationIds(line: Line): string[] {
@@ -144,6 +166,20 @@ export class Simulation {
     }
 
     return used;
+  }
+
+  previewBridges(
+    excludeLineId: string | null,
+    stationIds: string[],
+  ): { crossings: number; used: number; capacity: number; allowed: boolean } {
+    const crossings = countWaterCrossings(stationIds, this.map);
+    const used = this.usedBridges(excludeLineId, stationIds);
+    return {
+      crossings,
+      used,
+      capacity: this.state.bridgeCapacity,
+      allowed: used <= this.state.bridgeCapacity,
+    };
   }
 
   private canUseBridges(
@@ -353,7 +389,44 @@ export class Simulation {
       return;
     }
 
-    this.applyUpgrade(card.kind);
+    const targetKind = this.upgradeTargetKind(card.kind);
+    if (targetKind) {
+      weekly.phase = 'target';
+      weekly.selectedCard = card;
+      weekly.targetKind = targetKind;
+      weekly.defaultTargetIds = this.autoTargetIds(card.kind);
+      return;
+    }
+
+    this.applyUpgrade(card.kind, []);
+    this.finishWeekly();
+  }
+
+  confirmUpgradeTarget(targetIds: string[]): void {
+    const weekly = this.state.weekly;
+    if (
+      !weekly ||
+      weekly.phase !== 'target' ||
+      !weekly.selectedCard ||
+      !weekly.targetKind
+    ) {
+      return;
+    }
+
+    const kind = weekly.selectedCard.kind;
+    const validIds =
+      weekly.targetKind === 'line'
+        ? targetIds.slice(0, 1)
+        : targetIds.slice(0, params.stations.stationsPerExpansion);
+
+    this.applyUpgrade(
+      kind,
+      validIds.length > 0 ? validIds : weekly.defaultTargetIds,
+    );
+    this.finishWeekly();
+  }
+
+  private finishWeekly(): void {
     this.state.weekly = null;
     this.state.weekStartDelivered = this.state.stats.delivered;
     this.state.weekMaxQueue = 0;
@@ -365,6 +438,18 @@ export class Simulation {
       this.state.unlockedLineSlots = 3;
     }
     this.handleNetworkChange();
+  }
+
+  private upgradeTargetKind(
+    kind: UpgradeKind,
+  ): 'line' | 'stations' | null {
+    if (kind === 'train' || kind === 'carriage' || kind === 'speed') {
+      return 'line';
+    }
+    if (kind === 'stationExpansion') {
+      return 'stations';
+    }
+    return null;
   }
 
   private startWeekly(completedWeek: number): void {
@@ -387,6 +472,9 @@ export class Simulation {
       phase: 'summary',
       summary,
       cards: this.drawUpgradeCards(count),
+      selectedCard: null,
+      targetKind: null,
+      defaultTargetIds: [],
     };
   }
 
@@ -444,7 +532,7 @@ export class Simulation {
     ) {
       result.push({ kind: 'stationExpansion', weight: weights.stationExpansion });
     }
-    if (this.state.speedStacks < caps.speedMaxStacks) {
+    if (lines.some((line) => line.speedStacks < caps.speedMaxStacks)) {
       result.push({ kind: 'speed', weight: weights.speed });
     }
     if (this.state.graceStacks < caps.graceMaxStacks) {
@@ -454,15 +542,16 @@ export class Simulation {
     return result;
   }
 
-  private applyUpgrade(kind: UpgradeKind): void {
+  private applyUpgrade(kind: UpgradeKind, targetIds: string[]): void {
     if (kind === 'train') {
-      this.addTrainToBestLine();
+      const line = this.resolveTargetLine(kind, targetIds);
+      if (line) {
+        this.addTrainToLine(line);
+      }
     }
 
     if (kind === 'carriage') {
-      const line = this.state.lines
-        .filter((entry) => !entry.removing)
-        .sort((a, b) => a.carriageLevel - b.carriageLevel)[0];
+      const line = this.resolveTargetLine(kind, targetIds);
       if (line && line.carriageLevel < params.upgrades.caps.carriageMaxPerLine) {
         line.carriageLevel += 1;
         for (const train of this.state.trains) {
@@ -488,10 +577,18 @@ export class Simulation {
     }
 
     if (kind === 'stationExpansion') {
-      const stations = this.state.stations
-        .filter((station) => station.active)
-        .sort((a, b) => b.queue.length - a.queue.length)
-        .slice(0, params.stations.stationsPerExpansion);
+      const targetStations = targetIds
+        .map((id) => this.tryStation(id))
+        .filter(
+          (station): station is Station =>
+            station !== undefined && station.active,
+        );
+      const stations =
+        targetStations.length > 0
+          ? targetStations.slice(0, params.stations.stationsPerExpansion)
+          : this.autoTargetIds(kind)
+              .map((id) => this.tryStation(id))
+              .filter((station): station is Station => station !== undefined);
       for (const station of stations) {
         station.capacity = Math.min(
           params.upgrades.caps.stationCapacityMax,
@@ -501,14 +598,10 @@ export class Simulation {
     }
 
     if (kind === 'speed') {
-      this.state.speedStacks = Math.min(
-        params.upgrades.caps.speedMaxStacks,
-        this.state.speedStacks + 1,
-      );
-      this.state.speedMultiplier = Math.pow(
-        params.trains.speedUpgradeFactor,
-        this.state.speedStacks,
-      );
+      const line = this.resolveTargetLine(kind, targetIds);
+      if (line && line.speedStacks < params.upgrades.caps.speedMaxStacks) {
+        line.speedStacks += 1;
+      }
     }
 
     if (kind === 'grace') {
@@ -521,19 +614,58 @@ export class Simulation {
     }
   }
 
-  private addTrainToBestLine(): void {
-    const candidates = this.state.lines
-      .filter((line) => !line.removing && !line.construction)
-      .map((line) => ({
-        line,
-        count: this.state.trains.filter((train) => train.lineId === line.id).length,
-      }))
-      .filter((entry) => entry.count < params.trains.maxTrainsPerLine)
-      .sort((a, b) => a.count - b.count);
-
-    if (candidates[0]) {
-      this.addTrainToLine(candidates[0].line);
+  private autoTargetIds(kind: UpgradeKind): string[] {
+    if (kind === 'stationExpansion') {
+      return this.state.stations
+        .filter((station) => station.active)
+        .sort((a, b) => b.queue.length - a.queue.length)
+        .slice(0, params.stations.stationsPerExpansion)
+        .map((station) => station.id);
     }
+
+    if (kind === 'train' || kind === 'carriage' || kind === 'speed') {
+      const line = this.resolveTargetLine(kind, []);
+      return line ? [line.id] : [];
+    }
+
+    return [];
+  }
+
+  private resolveTargetLine(
+    kind: UpgradeKind,
+    targetIds: string[],
+  ): Line | undefined {
+    const requested = targetIds[0] ? this.tryLine(targetIds[0]) : undefined;
+    if (requested && !requested.removing) {
+      return requested;
+    }
+
+    const lines = this.state.lines.filter(
+      (line) => !line.removing && line.stationIds.length >= 2,
+    );
+    if (lines.length === 0) {
+      return undefined;
+    }
+
+    if (kind === 'train') {
+      return [...lines].sort(
+        (a, b) =>
+          this.state.trains.filter((train) => train.lineId === a.id).length -
+          this.state.trains.filter((train) => train.lineId === b.id).length,
+      )[0];
+    }
+    if (kind === 'carriage') {
+      return [...lines].sort(
+        (a, b) => a.carriageLevel - b.carriageLevel,
+      )[0];
+    }
+    if (kind === 'speed') {
+      return [...lines].sort(
+        (a, b) => b.stationIds.length - a.stationIds.length,
+      )[0];
+    }
+
+    return lines[0];
   }
 
   private activateStationsForWeek(): void {
@@ -592,6 +724,14 @@ export class Simulation {
           (train) => train.lineId === line.id,
         ).length,
         carriageLevel: line.carriageLevel,
+        speedStacks: line.speedStacks,
+      })),
+      stations: this.state.stations.map((station) => ({
+        id: station.id,
+        type: station.type,
+        active: station.active,
+        queue: station.queue.length,
+        capacity: station.capacity,
       })),
       weekly: this.state.weekly,
       failed: this.state.failed,
@@ -989,7 +1129,8 @@ export class Simulation {
       const duration = Math.max(
         0.1,
         distance /
-          (params.trains.speedPxPerSec * this.state.speedMultiplier) +
+          (params.trains.speedPxPerSec *
+            Math.pow(params.trains.speedUpgradeFactor, line.speedStacks)) +
           params.trains.accelPenaltySec,
       );
 

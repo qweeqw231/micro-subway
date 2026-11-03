@@ -2,14 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { getMap } from '../game/maps';
 import { params } from '../game/params';
+import {
+  createSaveFile,
+  parseSaveFile,
+  saveFileName,
+  type SaveFileV1,
+} from '../game/save/schema';
 import { Simulation } from '../game/simulation';
 import type { GameMap, HudSnapshot } from '../game/types';
 import { t } from '../i18n';
+import { webSaveRepository } from '../platform/web/storage';
+import type { SaveSummary } from '../platform/types';
 import { renderScene, type DragState } from '../render/renderer';
 import { FailurePanel } from '../ui/FailurePanel';
 import { Hud } from '../ui/Hud';
 import { LineDock } from '../ui/LineDock';
 import { MapPicker } from '../ui/MapPicker';
+import { SavePanel } from '../ui/SavePanel';
 import { TutorialTip } from '../ui/TutorialTip';
 import { WeeklyModal } from '../ui/WeeklyModal';
 
@@ -38,6 +47,10 @@ export function App() {
   const [rewireMode, setRewireMode] = useState<'start' | 'end' | null>(null);
   const [tutorialStep, setTutorialStep] = useState(99);
   const [notice, setNotice] = useState<string | null>(null);
+  const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [currentSlot, setCurrentSlot] = useState(1);
+  const [slots, setSlots] = useState<SaveSummary[]>([]);
 
   selectedLineIdRef.current = selectedLineId;
   tutorialStepRef.current = tutorialStep;
@@ -267,7 +280,10 @@ export function App() {
       y: point.y,
       hoverStationId: null,
       color,
+      crossing: false,
+      bridgeAllowed: true,
     };
+    setBridgeNotice(null);
     setDragActive(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -282,17 +298,58 @@ export function App() {
 
     const point = pointerToLogical(event);
     const station = findStationAt(point.x, point.y);
+    const simulation = simulationRef.current;
+    let crossing = false;
+    let bridgeAllowed = true;
+    let nextBridgeNotice: string | null = null;
+
+    if (simulation && station) {
+      const line = getSelectedLine();
+      let candidateIds: string[] | null = null;
+
+      if (line && !line.stationIds.includes(station.id)) {
+        candidateIds =
+          drag.endpoint === 'start'
+            ? [station.id, ...line.stationIds]
+            : [...line.stationIds, station.id];
+      } else if (!line) {
+        candidateIds = [drag.startStationId, station.id];
+      }
+
+      if (candidateIds) {
+        const preview = simulation.previewBridges(
+          line?.id ?? null,
+          candidateIds,
+        );
+        crossing = preview.crossings > 0;
+        bridgeAllowed = preview.allowed;
+        if (crossing) {
+          nextBridgeNotice = bridgeAllowed
+            ? t('hint.bridgePreview', {
+                crossings: preview.crossings,
+                used: preview.used,
+                capacity: preview.capacity,
+              })
+            : t('hint.needBridge');
+        }
+      }
+    }
+
     dragRef.current = {
       ...drag,
       x: point.x,
       y: point.y,
       hoverStationId: station?.id ?? null,
+      crossing,
+      bridgeAllowed,
     };
+    setBridgeNotice(nextBridgeNotice);
   };
 
   const clearDrag = (event?: ReactPointerEvent<HTMLCanvasElement>) => {
     dragRef.current = null;
     setDragActive(false);
+    setBridgeNotice(null);
     if (event && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -478,6 +535,141 @@ export function App() {
     setHud(simulation.getHud());
   }, []);
 
+  const confirmUpgradeTarget = useCallback((targetIds: string[]) => {
+    const simulation = simulationRef.current;
+    if (!simulation) {
+      return;
+    }
+    simulation.confirmUpgradeTarget(targetIds);
+    setHud(simulation.getHud());
+  }, []);
+
+  const refreshSlots = useCallback(() => {
+    setSlots(webSaveRepository.list());
+  }, []);
+
+  const openSavePanel = useCallback(() => {
+    refreshSlots();
+    setSaveOpen(true);
+  }, [refreshSlots]);
+
+  const buildSave = useCallback(
+    (slot: number): SaveFileV1 | null => {
+      const simulation = simulationRef.current;
+      if (!simulation || !mapId) {
+        return null;
+      }
+      return createSaveFile(
+        simulation.exportSnapshot(),
+        mapId,
+        slot,
+        tutorialStepRef.current,
+      );
+    },
+    [mapId],
+  );
+
+  const saveToSlot = useCallback(
+    (slot: number) => {
+      const save = buildSave(slot);
+      if (!save) {
+        return;
+      }
+      webSaveRepository.write(slot, save);
+      setCurrentSlot(slot);
+      refreshSlots();
+      setNotice(t('save.saved', { slot }));
+    },
+    [buildSave, refreshSlots],
+  );
+
+  const loadSaveFile = useCallback(
+    (save: SaveFileV1) => {
+      const map = getMap(save.mapId);
+      if (!map) {
+        setNotice(t('save.error'));
+        return;
+      }
+
+      const simulation = Simulation.fromSnapshot(map, save.snapshot);
+      simulationRef.current = simulation;
+      dragRef.current = null;
+      pausedRef.current = false;
+      speedRef.current = 1;
+      setMapId(save.mapId);
+      setHud(simulation.getHud());
+      setPaused(false);
+      setSpeed(1);
+      setSelectedLineId(null);
+      setSelectedColorIndex(0);
+      setRewireMode(null);
+      setTutorialStep(save.ui?.tutorialStep ?? 99);
+      setCurrentSlot(save.slot);
+      setSaveOpen(false);
+      setNotice(t('save.loaded'));
+      refreshSlots();
+    },
+    [refreshSlots],
+  );
+
+  const loadSlot = useCallback(
+    (slot: number) => {
+      const save = webSaveRepository.read(slot);
+      if (!save) {
+        setNotice(t('save.error'));
+        return;
+      }
+      loadSaveFile(save);
+    },
+    [loadSaveFile],
+  );
+
+  const exportSlot = useCallback((slot: number) => {
+    const save = webSaveRepository.read(slot);
+    if (!save) {
+      return;
+    }
+    const blob = new Blob([JSON.stringify(save, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = saveFileName(slot);
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const importSave = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const save = parseSaveFile(JSON.parse(text));
+        webSaveRepository.backup(save.slot);
+        webSaveRepository.write(save.slot, save);
+        loadSaveFile(save);
+      } catch {
+        setNotice(t('save.error'));
+      }
+    },
+    [loadSaveFile],
+  );
+
+  useEffect(() => {
+    if (!mapId) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      const save = buildSave(currentSlot);
+      if (save) {
+        webSaveRepository.write(currentSlot, save);
+        refreshSlots();
+      }
+    }, params.save.autosaveIntervalSec * 1000);
+
+    return () => window.clearInterval(interval);
+  }, [mapId, currentSlot, buildSave, refreshSlots]);
+
   if (!mapId || !hud) {
     return <MapPicker onSelect={selectMap} />;
   }
@@ -496,7 +688,7 @@ export function App() {
           : hud.lineCount > 0
             ? t('hint.drawNewLine')
             : t('hint.drawLine');
-  const hint = notice ?? baseHint;
+  const hint = notice ?? bridgeNotice ?? baseHint;
 
   return (
     <div className="app">
@@ -508,6 +700,7 @@ export function App() {
         onTogglePause={togglePause}
         onToggleSpeed={toggleSpeed}
         onRestart={restart}
+        onOpenSave={openSavePanel}
       />
 
       <LineDock
@@ -544,15 +737,30 @@ export function App() {
         )}
         {hud.weekly && (
           <WeeklyModal
+            hud={hud}
             weekly={hud.weekly}
             tutorialHint={
               tutorialStep === 3 ? t('tutorial.step3') : undefined
             }
             onShowCards={showWeeklyCards}
             onChoose={chooseUpgrade}
+            onConfirm={confirmUpgradeTarget}
           />
         )}
       </main>
+
+      {saveOpen && (
+        <SavePanel
+          slots={slots}
+          currentSlot={currentSlot}
+          onSelectSlot={setCurrentSlot}
+          onSave={saveToSlot}
+          onLoad={loadSlot}
+          onExport={exportSlot}
+          onImport={importSave}
+          onClose={() => setSaveOpen(false)}
+        />
+      )}
     </div>
   );
 }

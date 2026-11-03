@@ -415,7 +415,9 @@ function segmentCost(
 
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   return (
-    distance / (params.trains.speedPxPerSec * state.speedMultiplier) +
+    distance /
+      (params.trains.speedPxPerSec *
+        Math.pow(params.trains.speedUpgradeFactor, line.speedStacks)) +
     params.trains.accelPenaltySec +
     params.trains.dwellBaseSec
   );

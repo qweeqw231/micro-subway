@@ -382,6 +382,159 @@ button:focus-visible {
   line-height: 1.5;
 }
 
+.target-panel {
+  width: min(620px, calc(100% - 32px));
+}
+
+.target-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  margin: 14px 0;
+  overflow: auto;
+}
+
+.target-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+  border-radius: 12px;
+  background: #f8f4e9;
+}
+
+.target-option.selected {
+  border-color: #20242b;
+  box-shadow: 0 0 0 1px #20242b inset;
+}
+
+.target-option strong {
+  font-size: 13px;
+}
+
+.target-option span:last-child {
+  color: #6b7280;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.save-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgb(32 36 43 / 28%);
+  backdrop-filter: blur(3px);
+}
+
+.save-panel {
+  width: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #ded8cb;
+  border-radius: 18px;
+  background: #fffdf7;
+  box-shadow: 0 20px 50px rgb(32 36 43 / 18%);
+}
+
+.save-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.save-head h2 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.save-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.save-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+  padding: 14px;
+  border: 1px solid #ded8cb;
+  border-radius: 14px;
+  background: #f8f4e9;
+  cursor: pointer;
+}
+
+.save-slot.selected {
+  border-color: #20242b;
+  box-shadow: 0 0 0 1px #20242b inset;
+}
+
+.save-slot-title {
+  font-size: 14px;
+}
+
+.save-slot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.save-slot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.save-slot-actions button {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.save-slot-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.save-import {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ded8cb;
+}
+
+.save-import p {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.import-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #c9c3b6;
+  border-radius: 999px;
+  background: #fffdf7;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.import-button input {
+  display: none;
+}
+
 .tutorial-tip {
   position: absolute;
   left: 16px;

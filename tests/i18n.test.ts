@@ -4,27 +4,30 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../src/i18n';
 
 const DICTIONARY_PATH = join(process.cwd(), 'src/i18n/ui-strings.zh-CN.json');
-const SCAN_DIRS = ['src/ui', 'src/render', 'src/app'];
+const SOURCE_ROOT = join(process.cwd(), 'src');
 const CJK = /[\u3400-\u9fff]/;
 
-function collectFiles(dir: string): string[] {
-  const fullPath = join(process.cwd(), dir);
-  const entries = readdirSync(fullPath);
-
-  return entries.flatMap((entry) => {
-    const path = join(fullPath, entry);
+function collectSourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
     if (statSync(path).isDirectory()) {
-      return collectFiles(join(dir, entry));
+      return collectSourceFiles(path);
     }
-    return /\.(ts|tsx)$/.test(entry) ? [path] : [];
+    if (!/\.(ts|tsx)$/.test(entry)) {
+      return [];
+    }
+    return [path];
   });
 }
 
 describe('i18n constraints', () => {
-  it('has no CJK literals in UI, render, or app code', () => {
+  it('has no CJK literals in any source code file', () => {
     const offenders: string[] = [];
 
-    for (const file of SCAN_DIRS.flatMap(collectFiles)) {
+    for (const file of collectSourceFiles(SOURCE_ROOT)) {
+      if (file.includes(`${join('src', 'i18n')}`) && file.endsWith('.json')) {
+        continue;
+      }
       const contents = readFileSync(file, 'utf8');
       if (CJK.test(contents)) {
         offenders.push(file.replace(`${process.cwd()}/`, ''));
@@ -41,7 +44,7 @@ describe('i18n constraints', () => {
     >;
     const missing: string[] = [];
 
-    for (const file of SCAN_DIRS.flatMap(collectFiles)) {
+    for (const file of collectSourceFiles(SOURCE_ROOT)) {
       const contents = readFileSync(file, 'utf8');
       const matches = [...contents.matchAll(/\bt\(\s*['"]([^'"]+)['"]/g)];
       for (const match of matches) {
@@ -55,7 +58,7 @@ describe('i18n constraints', () => {
     expect(missing).toEqual([]);
   });
 
-  it('throws when a key is missing', () => {
-    expect(() => t('missing.key')).toThrow('Missing UI string key');
+  it('falls back to the key when a value is missing', () => {
+    expect(t('missing.key')).toBe('missing.key');
   });
 });

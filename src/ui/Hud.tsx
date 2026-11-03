@@ -9,6 +9,7 @@ interface HudProps {
   onTogglePause: () => void;
   onToggleSpeed: () => void;
   onRestart: () => void;
+  onOpenSave: () => void;
 }
 
 const LEGEND_TYPES: StationType[] = [
@@ -26,6 +27,7 @@ export function Hud({
   onTogglePause,
   onToggleSpeed,
   onRestart,
+  onOpenSave,
 }: HudProps) {
   return (
     <header className="hud">
@@ -50,6 +52,7 @@ export function Hud({
           {paused ? t('hud.resume') : t('hud.pause')}
         </button>
         <button onClick={onRestart}>{t('hud.restart')}</button>
+        <button onClick={onOpenSave}>{t('hud.save')}</button>
       </div>
 
       <div className="legend" aria-label={t('hud.legend')}>

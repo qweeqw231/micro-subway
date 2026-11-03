@@ -1,12 +1,13 @@
-import rawStrings from './ui-strings.zh-CN.json';
+import zhCN from './ui-strings.zh-CN.json';
 
-const strings = rawStrings as Record<string, string>;
+const primary = zhCN as Record<string, string>;
 
+/**
+ * Stable keys, optional values: a future en file can fill the same keys.
+ * A missing translation falls back to the key instead of crashing the game.
+ */
 export function t(key: string, vars?: Record<string, string | number>): string {
-  const value = strings[key];
-  if (!value) {
-    throw new Error(`Missing UI string key: ${key}`);
-  }
+  const value = primary[key] ?? key;
 
   return value.replace(/\{(\w+)\}/g, (match, name: string) => {
     const replacement = vars?.[name];

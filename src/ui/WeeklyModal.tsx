@@ -1,18 +1,29 @@
+import { useEffect, useState } from 'react';
 import { t } from '../i18n';
-import type { UpgradeCard, UpgradeKind, WeeklyState } from '../game/types';
+import { params } from '../game/params';
+import type {
+  HudSnapshot,
+  UpgradeCard,
+  UpgradeKind,
+  WeeklyState,
+} from '../game/types';
 
 interface WeeklyModalProps {
+  hud: HudSnapshot;
   weekly: WeeklyState;
   tutorialHint?: string;
   onShowCards: () => void;
   onChoose: (cardId: string) => void;
+  onConfirm: (targetIds: string[]) => void;
 }
 
 export function WeeklyModal({
+  hud,
   weekly,
   tutorialHint,
   onShowCards,
   onChoose,
+  onConfirm,
 }: WeeklyModalProps) {
   if (weekly.phase === 'summary') {
     return (
@@ -45,6 +56,16 @@ export function WeeklyModal({
     );
   }
 
+  if (weekly.phase === 'target') {
+    return (
+      <TargetPicker
+        hud={hud}
+        weekly={weekly}
+        onConfirm={onConfirm}
+      />
+    );
+  }
+
   return (
     <div className="weekly-overlay" role="dialog" aria-modal="true">
       <div className="weekly-panel">
@@ -64,6 +85,103 @@ export function WeeklyModal({
   );
 }
 
+function TargetPicker({
+  hud,
+  weekly,
+  onConfirm,
+}: {
+  hud: HudSnapshot;
+  weekly: WeeklyState;
+  onConfirm: (targetIds: string[]) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>(weekly.defaultTargetIds);
+
+  useEffect(() => {
+    if (weekly.phase === 'target') {
+      setSelected(weekly.defaultTargetIds);
+    }
+  }, [weekly.phase, weekly.selectedCard?.id]);
+
+  if (!weekly.selectedCard || !weekly.targetKind) {
+    return null;
+  }
+
+  const isStations = weekly.targetKind === 'stations';
+  const maxSelections = isStations
+    ? params.stations.stationsPerExpansion
+    : 1;
+  const lines = hud.lines.filter((line) => !line.removing && line.stationCount >= 2);
+  const stations = hud.stations.filter((station) => station.active);
+
+  const toggle = (id: string) => {
+    if (!isStations) {
+      setSelected([id]);
+      return;
+    }
+    if (selected.includes(id)) {
+      setSelected(selected.filter((entry) => entry !== id));
+    } else if (selected.length < maxSelections) {
+      setSelected([...selected, id]);
+    }
+  };
+
+  const required = isStations ? params.stations.stationsPerExpansion : 1;
+  const canConfirm = selected.length >= required;
+
+  return (
+    <div className="weekly-overlay" role="dialog" aria-modal="true">
+      <div className="weekly-panel target-panel">
+        <h2>{t('weekly.targetTitle')}</h2>
+        <p className="muted">
+          {isStations ? t('weekly.targetStations') : t('weekly.targetLine')}
+        </p>
+        <div className="target-options">
+          {isStations
+            ? stations.map((station) => {
+                const lineSelected = selected.includes(station.id);
+                return (
+                  <button
+                    key={station.id}
+                    className={`target-option ${lineSelected ? 'selected' : ''}`}
+                    onClick={() => toggle(station.id)}
+                  >
+                    <span className={`glyph glyph-${station.type}`} aria-hidden="true" />
+                    <strong>{t(`station.type.${station.type}`)}</strong>
+                    <span>
+                      {t('station.queueShort', {
+                        queue: station.queue,
+                        capacity: station.capacity,
+                      })}
+                    </span>
+                  </button>
+                );
+              })
+            : lines.map((line) => {
+                const lineSelected = selected.includes(line.id);
+                return (
+                  <button
+                    key={line.id}
+                    className={`target-option ${lineSelected ? 'selected' : ''}`}
+                    onClick={() => toggle(line.id)}
+                  >
+                    <span className="line-swatch" style={{ background: line.color }} />
+                    <strong>{t('line.slot', { index: line.colorIndex + 1 })}</strong>
+                    <span>
+                      {t('line.stations', { count: line.stationCount })} ·{' '}
+                      {t('line.trainCount', { count: line.trainCount })}
+                    </span>
+                  </button>
+                );
+              })}
+        </div>
+        <button className="primary" disabled={!canConfirm} onClick={() => onConfirm(selected)}>
+          {t('weekly.confirm')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function UpgradeCardButton({
   card,
   onChoose,
@@ -72,7 +190,11 @@ function UpgradeCardButton({
   onChoose: () => void;
 }) {
   return (
-    <button className="upgrade-card" onClick={onChoose}>
+    <button
+      className="upgrade-card"
+      data-kind={card.kind}
+      onClick={onChoose}
+    >
       <UpgradeIcon kind={card.kind} />
       <strong>{t(`upgrade.${card.kind}.name`)}</strong>
       <span>{t(`upgrade.${card.kind}.desc`)}</span>

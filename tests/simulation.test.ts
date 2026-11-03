@@ -39,6 +39,31 @@ describe('Simulation M3', () => {
     expect(simulation.createLine(['s1', 's3'], 0)).toBe('L1');
   });
 
+  it('lets the player pick a different line target after choosing a card', () => {
+    const simulation = new Simulation(demoMap, 22);
+    simulation.createLine(['s1', 's3'], 0);
+    simulation.createLine(['s4', 's6'], 1);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+    for (const station of simulation.state.stations) {
+      station.nextSpawnSec = 1_000_000_000;
+    }
+    runFor(simulation, params.time.daySeconds * params.time.weekDays + 0.2);
+
+    simulation.advanceWeeklyToCards();
+    simulation.state.weekly!.cards = [{ id: 'card-train', kind: 'train' }];
+    simulation.chooseUpgrade('card-train');
+
+    expect(simulation.state.weekly?.phase).toBe('target');
+    expect(simulation.state.weekly?.targetKind).toBe('line');
+
+    simulation.confirmUpgradeTarget(['L2']);
+
+    expect(simulation.state.weekly).toBeNull();
+    expect(
+      simulation.state.trains.filter((train) => train.lineId === 'L2'),
+    ).toHaveLength(2);
+  });
+
   it('stops at the week boundary and applies an upgrade before week two', () => {
     const tidal = getMap('tidal-bay');
     if (!tidal) {

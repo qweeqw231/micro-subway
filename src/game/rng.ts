@@ -1,4 +1,10 @@
-export type Rng = () => number;
+export type RngState = [number, number, number, number];
+
+export interface Rng {
+  (): number;
+  getState: () => RngState;
+  setState: (state: RngState) => void;
+}
 
 /**
  * sfc32: small, deterministic, good enough for passenger spawns.
@@ -19,9 +25,15 @@ export function createRng(seed: number): Rng {
     return t / 4294967296;
   };
 
+  const random = next as Rng;
+  random.getState = () => [a, b, c, d];
+  random.setState = (state: RngState) => {
+    [a, b, c, d] = state.map((value) => value >>> 0);
+  };
+
   for (let i = 0; i < 12; i += 1) {
     next();
   }
 
-  return next;
+  return random;
 }

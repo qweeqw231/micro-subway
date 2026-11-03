@@ -72,6 +72,7 @@ export interface Line {
   construction: LineConstruction | null;
   removing: boolean;
   carriageLevel: number;
+  speedStacks: number;
 }
 
 export interface Train {
@@ -116,9 +117,12 @@ export interface WeeklySummary {
 }
 
 export interface WeeklyState {
-  phase: 'summary' | 'cards';
+  phase: 'summary' | 'cards' | 'target';
   summary: WeeklySummary;
   cards: UpgradeCard[];
+  selectedCard: UpgradeCard | null;
+  targetKind: 'line' | 'stations' | null;
+  defaultTargetIds: string[];
 }
 
 export interface SimState {
@@ -135,9 +139,7 @@ export interface SimState {
   failureStationId: string | null;
   unlockedLineSlots: number;
   bridgeCapacity: number;
-  speedMultiplier: number;
   graceBonusSec: number;
-  speedStacks: number;
   graceStacks: number;
   weekly: WeeklyState | null;
   weekStartDelivered: number;
@@ -161,6 +163,23 @@ export interface LineHudInfo {
   removing: boolean;
   trainCount: number;
   carriageLevel: number;
+  speedStacks: number;
+}
+
+export interface StationHudInfo {
+  id: string;
+  type: StationType;
+  active: boolean;
+  queue: number;
+  capacity: number;
+}
+
+export interface SimSnapshot {
+  seed: number;
+  rngState: [number, number, number, number];
+  nextPassengerId: number;
+  lastRouteRefreshSec: number;
+  state: SimState;
 }
 
 export interface HudSnapshot {
@@ -177,6 +196,7 @@ export interface HudSnapshot {
   bridgesUsed: number;
   bridgeCapacity: number;
   lines: LineHudInfo[];
+  stations: StationHudInfo[];
   weekly: WeeklyState | null;
   failed: boolean;
   failure: FailureInfo | null;

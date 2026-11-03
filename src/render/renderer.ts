@@ -16,6 +16,8 @@ export interface DragState {
   y: number;
   hoverStationId: string | null;
   color: string;
+  crossing: boolean;
+  bridgeAllowed: boolean;
 }
 
 export interface RenderView {
@@ -368,7 +370,13 @@ function drawDragPreview(
   const endX = target ? target.x : drag.x;
   const endY = target ? target.y : drag.y;
 
-  ctx.strokeStyle = drag.color;
+  const previewColor = drag.crossing
+    ? drag.bridgeAllowed
+      ? theme.warning
+      : theme.danger
+    : drag.color;
+
+  ctx.strokeStyle = previewColor;
   ctx.lineWidth = 5;
   ctx.setLineDash([8, 8]);
   ctx.beginPath();
@@ -378,7 +386,7 @@ function drawDragPreview(
   ctx.setLineDash([]);
 
   if (target) {
-    ctx.strokeStyle = drag.color;
+    ctx.strokeStyle = previewColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(target.x, target.y, theme.connectedRing + 5, 0, Math.PI * 2);
