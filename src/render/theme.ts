@@ -1,0 +1,17 @@
+export const theme = {
+  paper: '#F5F2EA',
+  land: '#E9E4D8',
+  water: '#CFE0E3',
+  park: '#DDE6D2',
+  ink: '#20242B',
+  muted: '#6B7280',
+  danger: '#C0392B',
+  warning: '#E0A100',
+  lineWidth: 7,
+  stationRadius: 10,
+  connectedRing: 15,
+  tokenRadius: 4.5,
+  trainWidth: 18,
+  trainHeight: 10,
+  safeMargin: 40,
+} as const;

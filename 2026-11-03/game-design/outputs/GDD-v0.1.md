@@ -4,6 +4,7 @@
 |---|---|
 | 文档状态 | 可评审草案（本轮只做设计，不写实现） |
 | 日期 | 2026-11-03 |
+| 最后更新 | 2026-11-04（10 项定稿、真实仓库地址、i18n 约束） |
 | 项目自称 | 线城 / Linevale |
 | GitHub 仓库 | [qweeqw231/micro-subway](https://github.com/qweeqw231/micro-subway)（slug `micro-subway`） |
 | 项目目录 | `c:\Work\trae_project\micro-subway` |
@@ -283,6 +284,8 @@ MVP 只有一种线型：**普通双向折线**。
 | 09–17 | 0.9 |
 | 17–20 | 1.6 |
 | 20–24 | 1.1 |
+
+每个时段同时带 `destinationPhase`（`offpeak` / `morning` / `evening`），直接驱动目的地权重；实现不得在代码里写死 6/9/17/20 点。
 
 **起点权重：** 居住 1.0、工作 1.0、商业 1.1、休闲 0.8。
 

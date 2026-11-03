@@ -5,7 +5,7 @@
 - 仓库名 / GitHub slug：`micro-subway`（保持不变）
 - 远端仓库：https://github.com/qweeqw231/micro-subway
 - 克隆地址：`git clone https://github.com/qweeqw231/micro-subway.git`
-- 本清单覆盖：About 文案、Topics、GitHub Pages、Discussions、首次 commit 顺序、徽章与 gh 命令
+- 本清单覆盖：About 文案、Topics、GitHub Pages、Discussions、首次 commit 顺序、徽章与 gh 命令、版本与 CHANGELOG 流程
 
 > 命名约定：`micro-subway` 只是仓库 slug；游戏对外名称是「线城 / Linevale」。
 
@@ -155,3 +155,10 @@ gh api -X POST repos/qweeqw231/micro-subway/pages -F build_type=workflow
 - [ ] 确认 `.gitignore` 已覆盖 `node_modules/`、`dist/`、构建产物、日志、`.screenshots/` 与 Tauri `src-tauri/target/`。
 - [ ] 确认 `README` 与 `README.zh-CN.md` 的设计文档相对链接可打开。
 - [ ] 若 README 使用徽章，链接分别指向真实仓库的 `LICENSE`、`LICENSE-ASSETS` 与 `#status` 锚点。
+
+## 8. 版本与 CHANGELOG 流程
+
+- 维护仓库根目录的 `CHANGELOG.md`，格式参照 Keep a Changelog，版本号使用 SemVer。
+- 日常改动先写入 `## [Unreleased]` 下，按「新增 / 变更 / 修复 / 移除 / 安全」分类；条目说明“做了什么、对使用者意味着什么”，不记录内部实现流水账。
+- 发版时把 `Unreleased` 收编为带日期的版本号（如 `## [0.1.0] - 2026-11-04`），并在其上方重新建立空的 `Unreleased` 段落。
+- `0.x` 阶段视为开发版，功能可变动；发布 tag 与 GitHub Release 时使用同一版本号，并确认 CHANGELOG 已有对应段落。

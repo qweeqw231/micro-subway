@@ -39,11 +39,11 @@
       }
     },
     "dayPhases": [
-      { "fromHour": 0, "toHour": 6, "multiplier": 0.6 },
-      { "fromHour": 6, "toHour": 9, "multiplier": 1.4 },
-      { "fromHour": 9, "toHour": 17, "multiplier": 0.9 },
-      { "fromHour": 17, "toHour": 20, "multiplier": 1.6 },
-      { "fromHour": 20, "toHour": 24, "multiplier": 1.1 }
+      { "fromHour": 0, "toHour": 6, "multiplier": 0.6, "destinationPhase": "offpeak" },
+      { "fromHour": 6, "toHour": 9, "multiplier": 1.4, "destinationPhase": "morning" },
+      { "fromHour": 9, "toHour": 17, "multiplier": 0.9, "destinationPhase": "offpeak" },
+      { "fromHour": 17, "toHour": 20, "multiplier": 1.6, "destinationPhase": "evening" },
+      { "fromHour": 20, "toHour": 24, "multiplier": 1.1, "destinationPhase": "offpeak" }
     ]
   },
   "stations": {
