@@ -1,0 +1,85 @@
+# Dependencies
+/node_modules/
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/install-state.gz
+
+# Build output and caches
+/dist/
+/dist-ssr/
+/build/
+/out/
+/.vite/
+/.cache/
+/.parcel-cache/
+/.turbo/
+/.next/
+/.nuxt/
+/storybook-static/
+/coverage/
+/.nyc_output/
+*.tsbuildinfo
+/.eslintcache
+*.local
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Test and tooling artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/.stylelintcache
+
+# Editor and IDE files
+/.vscode/
+/.idea/
+/.fleet/
+/.history/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Temporary files
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Tauri / Rust (desktop stage)
+/src-tauri/target/
+/src-tauri/gen/
+/target/
+**/*.rs.bk
+*.pdb
+
+# Local game exports and scratch data
+/saves/
+/scratch/
+/.screenshots/

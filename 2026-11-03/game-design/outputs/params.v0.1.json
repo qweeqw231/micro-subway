@@ -1,0 +1,243 @@
+{
+  "version": "0.1.0",
+  "time": {
+    "tickHz": 60,
+    "daySeconds": 20,
+    "weekDays": 7,
+    "speeds": [1, 2, 4]
+  },
+  "demand": {
+    "baseRatePerStation": 0.05,
+    "weeklyGrowth": 1.10,
+    "growthSoftCapWeek": 12,
+    "firstLineSpawnDelaySec": 8,
+    "queueHardCapFactor": 2,
+    "originWeights": {
+      "residential": 1.0,
+      "work": 1.0,
+      "commercial": 1.1,
+      "leisure": 0.8
+    },
+    "destinationWeights": {
+      "offpeak": {
+        "residential": 0.95,
+        "work": 1.15,
+        "commercial": 1.00,
+        "leisure": 0.85
+      },
+      "morning": {
+        "residential": 0.70,
+        "work": 1.50,
+        "commercial": 1.00,
+        "leisure": 0.60
+      },
+      "evening": {
+        "residential": 1.50,
+        "work": 0.50,
+        "commercial": 1.10,
+        "leisure": 1.20
+      }
+    },
+    "dayPhases": [
+      { "fromHour": 0, "toHour": 6, "multiplier": 0.6 },
+      { "fromHour": 6, "toHour": 9, "multiplier": 1.4 },
+      { "fromHour": 9, "toHour": 17, "multiplier": 0.9 },
+      { "fromHour": 17, "toHour": 20, "multiplier": 1.6 },
+      { "fromHour": 20, "toHour": 24, "multiplier": 1.1 }
+    ]
+  },
+  "stations": {
+    "capacity": 6,
+    "capacityMax": 14,
+    "capacityPerExpansion": 2,
+    "stationsPerExpansion": 2,
+    "overloadGraceSec": 18,
+    "overloadDecayRate": 0.6,
+    "graceUpgradeSec": 5,
+    "graceMaxStacks": 2,
+    "newPerWeek": 1,
+    "minSpacingPx": 100,
+    "edgeMarginPx": 40,
+    "minStationCount": 6,
+    "minTypes": 2
+  },
+  "trains": {
+    "speedPxPerSec": 55,
+    "accelPenaltySec": 0.4,
+    "capacity": 6,
+    "carriageCapacity": 4,
+    "maxCarriages": 3,
+    "dwellBaseSec": 0.8,
+    "dwellPerPassengerSec": 0.1,
+    "dwellMaxSec": 4.0,
+    "maxTrainsPerLine": 4,
+    "initialPerLine": 1,
+    "speedUpgradeFactor": 1.08,
+    "speedUpgradeMaxStacks": 2,
+    "dispatchRule": "largest-gap"
+  },
+  "lines": {
+    "startUnlocked": 2,
+    "thirdUnlockWeek": 2,
+    "max": 6,
+    "maxStationsPerLine": 14,
+    "minStationsPerLine": 2,
+    "construction": {
+      "baseSec": 2.0,
+      "perChangedSegmentSec": 0.4,
+      "maxSec": 6.0,
+      "newLineSec": 1.5,
+      "deleteSec": 3.0
+    },
+    "colors": [
+      "#0072B2",
+      "#D55E00",
+      "#009E73",
+      "#CC79A7",
+      "#E69F00",
+      "#56B4E9"
+    ]
+  },
+  "routing": {
+    "transferPenaltySec": 5,
+    "hubTransferPenaltySec": 3,
+    "waitEstimateFactor": 0.5,
+    "congestionThreshold": 0.5,
+    "congestionPenaltySec": 6,
+    "criticalCongestionThreshold": 0.9,
+    "criticalCongestionPenaltySec": 15,
+    "maxTransfers": 3,
+    "rerouteImprovementRatio": 0.2,
+    "recomputeIntervalSec": 3,
+    "tieToleranceRatio": 0.1
+  },
+  "upgrades": {
+    "cardsPerWeek": 2,
+    "specialCardsPerWeek": 3,
+    "specialWeeks": [4, 8, 12],
+    "weights": {
+      "newTrain": 28,
+      "carriage": 22,
+      "stationExpansion": 18,
+      "newLine": 12,
+      "speed": 8,
+      "hub": 6,
+      "grace": 6
+    },
+    "caps": {
+      "newTrainMaxPerLine": 4,
+      "carriageMaxPerLine": 3,
+      "lineMax": 6,
+      "hubMaxStations": 2,
+      "graceMaxStacks": 2,
+      "speedMaxStacks": 2,
+      "stationCapacityMax": 14
+    },
+    "pityOverloadEvents": 2,
+    "forcedThirdLineWeek": 2
+  },
+  "maps": {
+    "tidal-bay": {
+      "name": "潮汐湾",
+      "difficulty": "easy",
+      "startStations": 6,
+      "stationCap": 14,
+      "startLines": 2,
+      "demandScale": 0.9,
+      "overloadGraceSec": 24,
+      "tutorialWeeks": 2,
+      "tutorialDemandScale": 0.85,
+      "tutorialExtraSpawnDelaySec": 10,
+      "stationMix": {
+        "residential": 3,
+        "work": 1,
+        "commercial": 1,
+        "leisure": 1
+      }
+    },
+    "old-grid": {
+      "name": "棋盘旧城",
+      "difficulty": "normal",
+      "startStations": 7,
+      "stationCap": 16,
+      "startLines": 2,
+      "demandScale": 1.0,
+      "overloadGraceSec": 18,
+      "stationMix": {
+        "residential": 2,
+        "work": 2,
+        "commercial": 2,
+        "leisure": 1
+      }
+    },
+    "three-rivers": {
+      "name": "三河岛",
+      "difficulty": "hard",
+      "startStations": 8,
+      "stationCap": 17,
+      "startLines": 2,
+      "demandScale": 1.1,
+      "overloadGraceSec": 15,
+      "stationMix": {
+        "residential": 3,
+        "work": 2,
+        "commercial": 2,
+        "leisure": 1
+      }
+    }
+  },
+  "ui": {
+    "logicalWidth": 1280,
+    "logicalHeight": 800,
+    "safeMarginPx": 80,
+    "snapPx": 48,
+    "touchDragOffsetPx": 16,
+    "stationHitRadiusPx": 22,
+    "minTouchTargetPx": 44,
+    "queueVisibleCount": 8,
+    "hudRefreshHz": 10
+  },
+  "platform": {
+    "desktop": "tauri2",
+    "windowWidth": 1280,
+    "windowHeight": 800,
+    "minWidth": 1024,
+    "minHeight": 640,
+    "targetOS": "Windows 10 1809+ / 11 x64"
+  },
+  "save": {
+    "slotCount": 3,
+    "autosaveIntervalSec": 15,
+    "schemaVersion": 1,
+    "maxImportBytes": 2097152,
+    "retrySnapshotSeparate": true,
+    "backupOnImport": true,
+    "fileNamePattern": "linevale-save-slot{slot}-v{schemaVersion}.json",
+    "retryFileNamePattern": "linevale-retry-slot{slot}.json",
+    "settingsFileName": "linevale-settings.json",
+    "profileFileName": "linevale-profile.json",
+    "backupFileNamePattern": "linevale-save-slot{slot}-v{schemaVersion}.backup-{timestamp}.json",
+    "webKeys": {
+      "save": "linevale.save.slot{slot}",
+      "retry": "linevale.retry.slot{slot}",
+      "settings": "linevale.settings",
+      "profile": "linevale.profile"
+    },
+    "desktopPaths": {
+      "saveDir": "%APPDATA%\\Linevale\\saves",
+      "retryDir": "%APPDATA%\\Linevale\\retry",
+      "settingsFile": "%APPDATA%\\Linevale\\linevale-settings.json",
+      "profileFile": "%APPDATA%\\Linevale\\linevale-profile.json"
+    }
+  },
+  "_meta": {
+    "note": "以下划线开头的键仅供阅读，加载器应忽略。各参数的推荐范围与依据见 GDD 第 6 节。",
+    "tuningOrder": [
+      "demand.baseRatePerStation",
+      "stations.overloadGraceSec",
+      "routing.transferPenaltySec",
+      "trains.speedPxPerSec",
+      "demand.weeklyGrowth"
+    ]
+  }
+}

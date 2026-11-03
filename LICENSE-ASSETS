@@ -1,0 +1,54 @@
+# Asset License (LICENSE-ASSETS)
+
+Copyright (c) 2026 qweeqw231
+
+This file is a notice that explains which license applies to the creative assets of Linevale. It is not the license text. The binding terms are the official Creative Commons license.
+
+## Scope
+
+Unless a file or folder states otherwise, the following are licensed under **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**:
+
+- Artwork, illustrations, icons, visual design assets, and color palettes.
+- Audio: music, sound effects, and sound design, including synthesized game audio.
+- Map data and level layouts: map outlines, water and park geometry, station positions, station types, activation order, and related level data.
+- In-game text and UI copy written specifically for this project.
+
+License URL: <https://creativecommons.org/licenses/by-nc-sa/4.0/>
+
+A human-readable summary is available from the same page. In case of any conflict, the official legal code at that URL governs.
+
+## What this means
+
+You may share and adapt the assets above for non-commercial purposes if you:
+
+- Give appropriate credit to the copyright holder.
+- Link to the license.
+- Indicate whether changes were made.
+- License your adaptations under the same terms (ShareAlike).
+
+Commercial use is not permitted. For commercial licensing, contact the copyright holder.
+
+Suggested attribution:
+
+> Linevale assets © 2026 qweeqw231, licensed under CC BY-NC-SA 4.0. Source: https://github.com/qweeqw231/micro-subway. Changes were made.
+
+Adjust the wording to your use. Remove "Changes were made" if you redistribute an unmodified copy.
+
+## Code and assets are licensed separately
+
+All source code in this repository is licensed under the MIT License; see [LICENSE](LICENSE). The MIT License does not cover the assets listed above. CC BY-NC-SA 4.0 does not cover the source code.
+
+A distribution that combines code and assets must satisfy both licenses. Because the asset license is non-commercial, the project as a whole is not offered under a single OSI-approved open-source license.
+
+## Third-party components
+
+The project intends to use only original assets, or third-party assets with compatible open licenses. Planned or possible components include:
+
+- Fonts: Inter (SIL Open Font License) and Noto Sans SC / system Chinese fallbacks. These remain under their own licenses and are not covered by CC BY-NC-SA 4.0.
+- Audio: if external sounds are used, only CC0 or otherwise compatible sources, with source and license recorded in a `CREDITS.md` file (planned).
+
+No artwork, audio, map data, names, or UI copy from Mini Metro or Dinosaur Polo Club is used.
+
+## No warranty
+
+The assets are provided "as is", without warranty of any kind, to the extent permitted by applicable law. The CC BY-NC-SA 4.0 license contains its own disclaimers.
