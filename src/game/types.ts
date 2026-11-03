@@ -36,6 +36,7 @@ export interface Passenger {
   spawnedAtSec: number;
   route: RoutePlan | null;
   stepIndex: number;
+  rerouteCheck: boolean;
 }
 
 export interface Station extends StationDefinition {

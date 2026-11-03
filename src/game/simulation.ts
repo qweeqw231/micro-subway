@@ -1,7 +1,11 @@
 import { demoMap } from './demo-map';
 import { params } from './params';
 import { createRng, type Rng } from './rng';
-import { findRoute, isRouteValid } from './routing';
+import {
+  estimateRemainingCost,
+  findRoute,
+  isRouteValid,
+} from './routing';
 import type {
   DemoMap,
   HudSnapshot,
@@ -24,6 +28,8 @@ export class Simulation {
 
   private readonly map: DemoMap;
   private readonly rng: Rng;
+  private readonly routeCache = new Map<string, RoutePlan | null>();
+  private lastRouteRefreshSec = 0;
   private nextPassengerId = 1;
 
   constructor(map: DemoMap = demoMap, seed = DEFAULT_SEED) {
@@ -97,6 +103,28 @@ export class Simulation {
 
     this.state.lines.push(line);
     return line.id;
+  }
+
+  private getRoute(stationId: string, destType: StationType): RoutePlan | null {
+    const key = `${stationId}|${destType}`;
+    if (this.routeCache.has(key)) {
+      return this.routeCache.get(key) ?? null;
+    }
+
+    const route = findRoute(this.state, stationId, destType);
+    this.routeCache.set(key, route);
+    return route;
+  }
+
+  private handleNetworkChange(): void {
+    this.routeCache.clear();
+    this.refreshWaitingRoutes();
+    for (const train of this.state.trains) {
+      for (const passenger of train.passengers) {
+        passenger.rerouteCheck = true;
+      }
+    }
+    this.lastRouteRefreshSec = this.state.elapsedSec;
   }
 
   appendStation(lineId: string, stationId: string, end: LineEnd = 'end'): boolean {
@@ -186,7 +214,7 @@ export class Simulation {
       endSec: this.state.elapsedSec + params.lines.construction.deleteSec,
       newStationIds: null,
     };
-    this.refreshWaitingRoutes();
+    this.handleNetworkChange();
     return true;
   }
 
@@ -199,6 +227,12 @@ export class Simulation {
     this.state.elapsedSec += dt;
     this.refreshClock();
     this.updateConstructions();
+    if (
+      this.state.elapsedSec - this.lastRouteRefreshSec >=
+      params.routing.recomputeIntervalSec
+    ) {
+      this.handleNetworkChange();
+    }
     this.updateSpawns();
     this.updateTrains(dt);
     this.updateOverload(dt);
@@ -266,7 +300,7 @@ export class Simulation {
       endSec: this.state.elapsedSec + Math.min(params.lines.construction.maxSec, duration),
       newStationIds,
     };
-    this.refreshWaitingRoutes();
+    this.handleNetworkChange();
   }
 
   private editDuration(changedSegments: number): number {
@@ -314,7 +348,7 @@ export class Simulation {
         continue;
       }
 
-      this.refreshWaitingRoutes();
+      this.handleNetworkChange();
     }
   }
 
@@ -322,13 +356,15 @@ export class Simulation {
     const trains = this.state.trains.filter((train) => train.lineId === line.id);
 
     for (const train of trains) {
-      const stationId = line.stationIds[train.currentIndex];
+      const stationId =
+        line.stationIds[train.nextIndex] ?? line.stationIds[train.currentIndex];
       if (stationId) {
         const station = this.tryStation(stationId);
         if (station) {
           for (const passenger of train.passengers) {
             passenger.route = null;
             passenger.stepIndex = 0;
+            passenger.rerouteCheck = false;
             station.queue.push(passenger);
           }
         }
@@ -346,7 +382,7 @@ export class Simulation {
       }
     }
 
-    this.refreshWaitingRoutes();
+    this.handleNetworkChange();
   }
 
   private createTrain(line: Line): void {
@@ -382,36 +418,41 @@ export class Simulation {
       }
 
       const oldIndex = train.currentIndex;
-      const oldCurrentId = oldStationIds[train.currentIndex];
+      const oldDirection = train.direction;
+      const oldCurrentId = oldStationIds[oldIndex];
       let nextIndex = oldCurrentId
         ? line.stationIds.indexOf(oldCurrentId)
         : -1;
+      let nextDirection = oldDirection;
 
       if (nextIndex === -1) {
-        const oldStation = oldCurrentId ? this.tryStation(oldCurrentId) : undefined;
-        nextIndex = oldStation
-          ? this.nearestStationIndex(line, oldStation)
-          : 0;
+        nextIndex = this.findStationAhead(
+          line,
+          oldStationIds,
+          oldIndex,
+          oldDirection,
+        );
+        if (nextIndex === -1) {
+          nextDirection = oldDirection === 1 ? -1 : 1;
+          nextIndex = this.findStationAhead(
+            line,
+            oldStationIds,
+            oldIndex,
+            nextDirection,
+          );
+        }
+        if (nextIndex === -1) {
+          nextIndex = 0;
+        }
       }
 
       train.currentIndex = Math.max(0, nextIndex);
+      train.direction = nextDirection;
       train.progress = 0;
       train.state = 'dwell';
       train.dwellSec = params.trains.dwellBaseSec;
 
-      if (
-        oldIndex === oldStationIds.length - 1 &&
-        train.currentIndex < line.stationIds.length - 1 &&
-        train.direction === -1
-      ) {
-        train.direction = 1;
-      } else if (
-        oldIndex === 0 &&
-        train.currentIndex > 0 &&
-        train.direction === 1
-      ) {
-        train.direction = -1;
-      } else if (train.currentIndex <= 0) {
+      if (train.currentIndex <= 0) {
         train.direction = 1;
       } else if (train.currentIndex >= line.stationIds.length - 1) {
         train.direction = -1;
@@ -426,26 +467,25 @@ export class Simulation {
     }
   }
 
-  private nearestStationIndex(line: Line, station: Station): number {
-    let bestIndex = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    line.stationIds.forEach((stationId, index) => {
-      const candidate = this.tryStation(stationId);
-      if (!candidate) {
-        return;
+  private findStationAhead(
+    line: Line,
+    oldStationIds: string[],
+    oldIndex: number,
+    direction: 1 | -1,
+  ): number {
+    for (let offset = 1; offset < oldStationIds.length; offset += 1) {
+      const candidateId = oldStationIds[oldIndex + direction * offset];
+      if (candidateId === undefined) {
+        break;
       }
-      const distance = Math.hypot(
-        candidate.x - station.x,
-        candidate.y - station.y,
-      );
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    });
 
-    return bestIndex;
+      const newIndex = line.stationIds.indexOf(candidateId);
+      if (newIndex !== -1) {
+        return newIndex;
+      }
+    }
+
+    return -1;
   }
 
   private updateSpawns(): void {
@@ -487,6 +527,7 @@ export class Simulation {
       spawnedAtSec: this.state.elapsedSec,
       route: destination.route,
       stepIndex: 0,
+      rerouteCheck: false,
     };
     this.nextPassengerId += 1;
 
@@ -526,7 +567,7 @@ export class Simulation {
       const picked = choices[pickedIndex];
       choices.splice(pickedIndex, 1);
 
-      const route = findRoute(this.state, station.id, picked.type);
+      const route = this.getRoute(station.id, picked.type);
       if (route) {
         return { type: picked.type, route };
       }
@@ -542,26 +583,32 @@ export class Simulation {
         const oldValid =
           oldRoute !== null &&
           isRouteValid(this.state, oldRoute, station.id, passenger.stepIndex);
-        const nextRoute = findRoute(this.state, station.id, passenger.destType);
+        const nextRoute = this.getRoute(station.id, passenger.destType);
+        const oldRemaining =
+          oldValid && oldRoute
+            ? estimateRemainingCost(
+                this.state,
+                oldRoute,
+                station.id,
+                passenger.stepIndex,
+                true,
+              )
+            : Number.POSITIVE_INFINITY;
 
-        if (oldValid && oldRoute) {
-          const shouldSwitch =
-            passenger.stepIndex === 0 &&
-            nextRoute !== null &&
+        const shouldSwitch =
+          nextRoute !== null &&
+          (!oldValid ||
             nextRoute.cost <
-              oldRoute.cost *
-                (1 - params.routing.rerouteImprovementRatio);
-          if (shouldSwitch && nextRoute) {
-            this.assignRoute(passenger, nextRoute);
-          }
-          continue;
-        }
+              oldRemaining * (1 - params.routing.rerouteImprovementRatio));
 
-        if (nextRoute) {
+        if (shouldSwitch && nextRoute) {
           this.assignRoute(passenger, nextRoute);
-        } else {
+        } else if (!oldValid) {
           passenger.route = null;
           passenger.stepIndex = 0;
+          passenger.rerouteCheck = false;
+        } else {
+          passenger.rerouteCheck = false;
         }
       }
     }
@@ -570,6 +617,7 @@ export class Simulation {
   private assignRoute(passenger: Passenger, route: RoutePlan): void {
     passenger.route = route;
     passenger.stepIndex = 0;
+    passenger.rerouteCheck = false;
     passenger.targetStationId = route.steps[route.steps.length - 1].toStationId;
   }
 
@@ -586,7 +634,7 @@ export class Simulation {
       return true;
     }
 
-    const route = findRoute(this.state, stationId, passenger.destType);
+    const route = this.getRoute(stationId, passenger.destType);
     if (!route) {
       passenger.route = null;
       passenger.stepIndex = 0;
@@ -660,20 +708,56 @@ export class Simulation {
       if (!route || !step || step.toStationId !== currentId) {
         passenger.route = null;
         passenger.stepIndex = 0;
+        passenger.rerouteCheck = false;
         station.queue.push(passenger);
         continue;
       }
 
       passenger.stepIndex += 1;
       if (passenger.stepIndex >= route.steps.length) {
+        passenger.rerouteCheck = false;
         delivered += 1;
         continue;
       }
 
-      if (
-        !isRouteValid(
+      if (passenger.rerouteCheck) {
+        passenger.rerouteCheck = false;
+        const allowLineId = line.construction ? line.id : undefined;
+        const newRoute = this.getRoute(currentId, passenger.destType);
+        const oldRouteValid = isRouteValid(
           this.state,
           route,
+          currentId,
+          passenger.stepIndex,
+          allowLineId,
+        );
+        const oldRemaining = oldRouteValid
+          ? estimateRemainingCost(
+              this.state,
+              route,
+              currentId,
+              passenger.stepIndex,
+              false,
+              allowLineId,
+            )
+          : Number.POSITIVE_INFINITY;
+
+        if (
+          newRoute &&
+          (!oldRouteValid ||
+            newRoute.cost <
+              oldRemaining * (1 - params.routing.rerouteImprovementRatio))
+        ) {
+          this.assignRoute(passenger, newRoute);
+        }
+      }
+
+      const activeRoute = passenger.route;
+      if (
+        !activeRoute ||
+        !isRouteValid(
+          this.state,
+          activeRoute,
           currentId,
           passenger.stepIndex,
           line.construction ? line.id : undefined,
@@ -681,11 +765,12 @@ export class Simulation {
       ) {
         passenger.route = null;
         passenger.stepIndex = 0;
+        passenger.rerouteCheck = false;
         station.queue.push(passenger);
         continue;
       }
 
-      const nextStep = route.steps[passenger.stepIndex];
+      const nextStep = activeRoute.steps[passenger.stepIndex];
       const nextStationId = line.stationIds[train.nextIndex];
       const staysOnboard =
         nextStep.fromStationId === currentId &&

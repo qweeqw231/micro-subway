@@ -107,7 +107,7 @@
     "criticalCongestionThreshold": 0.9,
     "criticalCongestionPenaltySec": 15,
     "maxTransfers": 3,
-    "rerouteImprovementRatio": 0.2,
+    "rerouteImprovementRatio": 0.08,
     "recomputeIntervalSec": 3,
     "tieToleranceRatio": 0.1
   },
@@ -232,6 +232,7 @@
   },
   "_meta": {
     "note": "以下划线开头的键仅供阅读，加载器应忽略。各参数的推荐范围与依据见 GDD 第 6 节。",
+    "rerouteNote": "rerouteImprovementRatio=0.08：新路线剩余成本低于旧路线 8% 才切换；候车与车上乘客共用同一阈值。",
     "tuningOrder": [
       "demand.baseRatePerStation",
       "stations.overloadGraceSec",

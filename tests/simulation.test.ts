@@ -70,6 +70,7 @@ describe('Simulation M2', () => {
         spawnedAtSec: 0,
         route: null,
         stepIndex: 0,
+        rerouteCheck: false,
       });
     }
 
@@ -122,6 +123,7 @@ describe('Simulation M2', () => {
       spawnedAtSec: 0,
       route,
       stepIndex: 0,
+      rerouteCheck: false,
     });
 
     runFor(simulation, 120);
@@ -153,6 +155,138 @@ describe('Simulation M2', () => {
     expect(simulation.state.lines[0].construction).toBeNull();
     expect(simulation.state.lines[0].stationIds).toEqual(['s1', 's2', 's3']);
     expect(simulation.state.trains).toHaveLength(1);
+  });
+
+  it('moves waiting passengers to a newly built direct line', () => {
+    const simulation = new Simulation(demoMap, 10);
+    simulation.createLine(['s2', 's3', 's4'], 0);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+
+    for (const station of simulation.state.stations) {
+      station.nextSpawnSec = 1_000_000_000;
+    }
+
+    const station = simulation.state.stations.find((entry) => entry.id === 's2');
+    if (!station) {
+      throw new Error('Missing demo station s2');
+    }
+
+    const oldRoute = findRoute(simulation.state, 's2', 'residential');
+    if (!oldRoute) {
+      throw new Error('Expected an old route');
+    }
+
+    station.queue.push({
+      id: 2000,
+      destType: 'residential',
+      targetStationId: 's4',
+      spawnedAtSec: 0,
+      route: oldRoute,
+      stepIndex: 0,
+      rerouteCheck: false,
+    });
+
+    const train = simulation.state.trains.find((entry) => entry.lineId === 'L1');
+    if (train) {
+      train.dwellSec = 1000;
+    }
+
+    simulation.createLine(['s2', 's4'], 1);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+
+    const passenger = station.queue.find((entry) => entry.id === 2000);
+    expect(passenger?.route?.steps[0].lineId).toBe('L2');
+    expect(passenger?.route?.steps).toHaveLength(1);
+  });
+
+  it('reroutes an onboard passenger at the next station', () => {
+    const simulation = new Simulation(demoMap, 11);
+    simulation.createLine(['s2', 's3', 's4', 's5'], 0);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+
+    for (const station of simulation.state.stations) {
+      station.nextSpawnSec = 1_000_000_000;
+    }
+
+    const oldRoute = findRoute(simulation.state, 's2', 'leisure');
+    if (!oldRoute) {
+      throw new Error('Expected an old route');
+    }
+
+    const train = simulation.state.trains.find((entry) => entry.lineId === 'L1');
+    if (!train) {
+      throw new Error('Missing line 1 train');
+    }
+
+    train.passengers.push({
+      id: 3000,
+      destType: 'leisure',
+      targetStationId: 's5',
+      spawnedAtSec: 0,
+      route: oldRoute,
+      stepIndex: 0,
+      rerouteCheck: false,
+    });
+
+    simulation.createLine(['s3', 's5'], 1);
+    runFor(simulation, 120);
+
+    expect(simulation.state.stats.delivered).toBeGreaterThan(0);
+    expect(
+      simulation.state.trains.flatMap((entry) => entry.passengers).some(
+        (passenger) => passenger.id === 3000,
+      ),
+    ).toBe(false);
+  });
+
+  it('puts onboard passengers at the next station when deleting the line', () => {
+    const simulation = new Simulation(demoMap, 12);
+    simulation.createLine(['s1', 's2'], 0);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+
+    const train = simulation.state.trains[0];
+    train.dwellSec = 1000;
+    train.passengers.push({
+      id: 4000,
+      destType: 'work',
+      targetStationId: 's2',
+      spawnedAtSec: 0,
+      route: null,
+      stepIndex: 0,
+      rerouteCheck: false,
+    });
+
+    simulation.deleteLine('L1');
+    runFor(simulation, params.lines.construction.deleteSec + 0.1);
+
+    const nextStation = simulation.state.stations.find((entry) => entry.id === 's2');
+    expect(nextStation?.queue.some((passenger) => passenger.id === 4000)).toBe(true);
+  });
+
+  it('keeps train direction monotonic when the current station is removed', () => {
+    const simulation = new Simulation(demoMap, 13);
+    simulation.createLine(['s1', 's2', 's3'], 0);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+
+    const train = simulation.state.trains[0];
+    train.currentIndex = 2;
+    train.nextIndex = 1;
+    train.direction = -1;
+    train.state = 'dwell';
+    train.dwellSec = 1000;
+
+    simulation.replaceLastStation('L1', 's5');
+    runFor(
+      simulation,
+      params.lines.construction.baseSec +
+        params.lines.construction.perChangedSegmentSec * 2 +
+        0.1,
+    );
+
+    expect(simulation.state.lines[0].stationIds).toEqual(['s1', 's2', 's5']);
+    expect(simulation.state.lines[0].stationIds[train.currentIndex]).toBe('s2');
+    expect(train.direction).toBe(-1);
+    expect(simulation.state.lines[0].stationIds[train.nextIndex]).toBe('s1');
   });
 
   it('removes a line after its demolition construction', () => {

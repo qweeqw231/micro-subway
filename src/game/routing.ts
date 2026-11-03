@@ -248,6 +248,71 @@ export function findRoute(
   return null;
 }
 
+export function estimateRemainingCost(
+  state: SimState,
+  plan: RoutePlan,
+  stationId: string,
+  stepIndex: number,
+  includeInitialWait: boolean,
+  allowConstructingLineId?: string,
+): number {
+  if (stepIndex < 0 || stepIndex >= plan.steps.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const firstStep = plan.steps[stepIndex];
+  if (firstStep.fromStationId !== stationId) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  let total = 0;
+  const firstLine = lineById(state, firstStep.lineId);
+  if (
+    !firstLine ||
+    (firstLine.construction !== null &&
+      firstLine.id !== allowConstructingLineId)
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (includeInitialWait) {
+    const wait = waitForLine(state, firstLine);
+    if (!Number.isFinite(wait)) {
+      return Number.POSITIVE_INFINITY;
+    }
+    total += wait;
+  }
+
+  let previousLineId: string | null = null;
+  for (let index = stepIndex; index < plan.steps.length; index += 1) {
+    const step = plan.steps[index];
+    const line = lineById(state, step.lineId);
+    if (
+      !line ||
+      (line.construction !== null &&
+        line.id !== allowConstructingLineId)
+    ) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    if (previousLineId !== null && previousLineId !== step.lineId) {
+      const wait = waitForLine(state, line);
+      if (!Number.isFinite(wait)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      total +=
+        params.routing.transferPenaltySec +
+        wait +
+        congestionPenalty(stationById(state, step.fromStationId));
+    }
+
+    total += step.cost;
+    previousLineId = line.id;
+  }
+
+  return total;
+}
+
 export function isRouteValid(
   state: SimState,
   plan: RoutePlan,
