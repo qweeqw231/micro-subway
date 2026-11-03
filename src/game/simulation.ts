@@ -952,7 +952,7 @@ export class Simulation {
 
   private updateSpawns(): void {
     for (const station of this.state.stations) {
-      if (!this.isStationActive(station.id)) {
+      if (!station.active) {
         station.nextSpawnSec = Number.POSITIVE_INFINITY;
         continue;
       }
@@ -981,11 +981,10 @@ export class Simulation {
       return;
     }
 
-    const lastStep = destination.route.steps[destination.route.steps.length - 1];
     const passenger: Passenger = {
       id: this.nextPassengerId,
       destType: destination.type,
-      targetStationId: lastStep.toStationId,
+      targetStationId: destination.targetStationId,
       spawnedAtSec: this.state.elapsedSec,
       route: destination.route,
       stepIndex: 0,
@@ -1003,39 +1002,60 @@ export class Simulation {
 
   private chooseDestination(
     station: Station,
-  ): { type: StationType; route: RoutePlan } | null {
+  ): {
+    type: StationType;
+    route: RoutePlan | null;
+    targetStationId: string;
+  } | null {
     const phaseWeights =
       params.demand.destinationWeights[this.getDestinationPhase()];
-    const types = [
-      ...new Set(this.state.stations.map((entry) => entry.type)),
-    ].filter((type) => type !== station.type);
-    const choices = types
+    const choices = [
+      ...new Set(
+        this.state.stations
+          .filter((entry) => entry.active)
+          .map((entry) => entry.type),
+      ),
+    ]
+      .filter((type) => type !== station.type)
       .map((type) => ({ type, weight: phaseWeights[type] }))
       .filter((choice) => choice.weight > 0);
 
-    while (choices.length > 0) {
-      const total = choices.reduce((sum, choice) => sum + choice.weight, 0);
-      let roll = this.rng() * total;
-      let pickedIndex = choices.length - 1;
+    if (choices.length === 0) {
+      return null;
+    }
 
-      for (let index = 0; index < choices.length; index += 1) {
-        roll -= choices[index].weight;
-        if (roll <= 0) {
-          pickedIndex = index;
-          break;
-        }
-      }
+    const total = choices.reduce((sum, choice) => sum + choice.weight, 0);
+    let roll = this.rng() * total;
+    let picked = choices[choices.length - 1];
 
-      const picked = choices[pickedIndex];
-      choices.splice(pickedIndex, 1);
-
-      const route = this.getRoute(station.id, picked.type);
-      if (route) {
-        return { type: picked.type, route };
+    for (const choice of choices) {
+      roll -= choice.weight;
+      if (roll <= 0) {
+        picked = choice;
+        break;
       }
     }
 
-    return null;
+    const route = this.getRoute(station.id, picked.type);
+    const targets = this.state.stations.filter(
+      (entry) => entry.active && entry.type === picked.type,
+    );
+    const nearest = targets
+      .map((target) => ({
+        target,
+        distance: Math.hypot(target.x - station.x, target.y - station.y),
+      }))
+      .sort((a, b) => a.distance - b.distance)[0]?.target;
+
+    const targetStationId = route
+      ? route.steps[route.steps.length - 1].toStationId
+      : nearest?.id;
+
+    if (!targetStationId) {
+      return null;
+    }
+
+    return { type: picked.type, route, targetStationId };
   }
 
   private refreshWaitingRoutes(): void {

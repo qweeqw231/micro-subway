@@ -15,6 +15,12 @@ function runFor(simulation: Simulation, seconds: number): void {
   }
 }
 
+function keepOnlyActive(simulation: Simulation, activeIds: string[]): void {
+  for (const station of simulation.state.stations) {
+    station.active = activeIds.includes(station.id);
+  }
+}
+
 describe('Simulation M3', () => {
   it('ships three maps with distinct graces and water', () => {
     expect(GAME_MAPS).toHaveLength(3);
@@ -39,14 +45,40 @@ describe('Simulation M3', () => {
     expect(simulation.createLine(['s1', 's3'], 0)).toBe('L1');
   });
 
+  it('raises station capacity only through station-expansion upgrades', () => {
+    const simulation = new Simulation(demoMap, 24);
+    expect(simulation.state.stations[0].capacity).toBe(
+      params.stations.capacity,
+    );
+
+    simulation.state.weekly = {
+      phase: 'cards',
+      summary: {
+        completedWeek: 1,
+        delivered: 0,
+        maxQueue: 0,
+        newStations: 0,
+      },
+      cards: [{ id: 'card-exp', kind: 'stationExpansion' }],
+      selectedCard: null,
+      targetKind: null,
+      defaultTargetIds: [],
+    };
+    simulation.chooseUpgrade('card-exp');
+    expect(simulation.state.weekly?.targetKind).toBe('stations');
+    simulation.confirmUpgradeTarget(['s1', 's2']);
+
+    expect(simulation.state.stations.find((station) => station.id === 's1')?.capacity).toBe(
+      params.stations.capacity + params.stations.capacityPerExpansion,
+    );
+  });
+
   it('lets the player pick a different line target after choosing a card', () => {
     const simulation = new Simulation(demoMap, 22);
     simulation.createLine(['s1', 's3'], 0);
     simulation.createLine(['s4', 's6'], 1);
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
-    for (const station of simulation.state.stations) {
-      station.nextSpawnSec = 1_000_000_000;
-    }
+    keepOnlyActive(simulation, ['s1', 's3', 's4', 's6']);
     runFor(simulation, params.time.daySeconds * params.time.weekDays + 0.2);
 
     simulation.advanceWeeklyToCards();
@@ -71,6 +103,7 @@ describe('Simulation M3', () => {
     }
 
     const simulation = new Simulation(tidal, 21);
+    keepOnlyActive(simulation, []);
     runFor(simulation, params.time.daySeconds * params.time.weekDays + 0.2);
 
     expect(simulation.state.week).toBe(2);
@@ -125,6 +158,7 @@ describe('Simulation M2', () => {
   it('spawns and delivers passengers on a connected line', () => {
     const simulation = new Simulation(demoMap, 3);
     simulation.createLine(['s1', 's2'], 0);
+    keepOnlyActive(simulation, ['s1', 's2']);
 
     for (let index = 0; index < 3600; index += 1) {
       simulation.tick(tick);
@@ -134,9 +168,35 @@ describe('Simulation M2', () => {
     expect(simulation.state.stats.delivered).toBeGreaterThan(0);
   });
 
+  it('fails when an active station is never connected', () => {
+    const grid = getMap('old-grid');
+    if (!grid) {
+      throw new Error('Missing old grid');
+    }
+
+    const simulation = new Simulation(grid, 23);
+    keepOnlyActive(simulation, ['s1', 's2']);
+    runFor(simulation, 141);
+
+    expect(simulation.state.weekly?.phase).toBe('summary');
+    simulation.advanceWeeklyToCards();
+    const card = simulation.state.weekly!.cards[0];
+    simulation.chooseUpgrade(card.id);
+    if (simulation.state.weekly?.phase === 'target') {
+      simulation.confirmUpgradeTarget(simulation.state.weekly.defaultTargetIds);
+    }
+    keepOnlyActive(simulation, ['s1', 's2']);
+    runFor(simulation, 40);
+
+    expect(simulation.state.failed).toBe(true);
+    expect(simulation.state.failureStationId).toBeTruthy();
+    expect(simulation.state.stats.spawned).toBeGreaterThan(0);
+  });
+
   it('fails when a station stays over capacity for the grace period', () => {
     const simulation = new Simulation(demoMap, 4);
     simulation.createLine(['s1', 's2'], 0);
+    keepOnlyActive(simulation, ['s1', 's2']);
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
 
     const station = simulation.state.stations.find((entry) => entry.id === 's3');
@@ -183,6 +243,7 @@ describe('Simulation M2', () => {
     simulation.createLine(['s2', 's3'], 0);
     simulation.createLine(['s3', 's4', 's5'], 1);
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
+    keepOnlyActive(simulation, ['s2', 's3', 's4', 's5']);
 
     for (const station of simulation.state.stations) {
       station.nextSpawnSec = 1_000_000_000;
@@ -285,6 +346,7 @@ describe('Simulation M2', () => {
     const simulation = new Simulation(demoMap, 11);
     simulation.createLine(['s2', 's3', 's4', 's5'], 0);
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
+    keepOnlyActive(simulation, ['s2', 's3', 's4', 's5']);
 
     for (const station of simulation.state.stations) {
       station.nextSpawnSec = 1_000_000_000;
