@@ -53,21 +53,28 @@ linevale, game, web-game, browser-game, metro, transit, line-planning, typescrip
 
 ### 推荐方式：GitHub Actions 构建并部署
 
-适用前提：Web 脚手架与 `npm run build` 已存在。当前仓库没有可构建内容，因此**先不要开启 Pages**。
+当前 Web 构建已存在，工作流文件为 `.github/workflows/deploy-pages.yml`。推送到 `main` 后会自动执行测试、构建并发布。
 
-步骤：
+用户需要在 GitHub 网页完成的步骤：
 
-1. 仓库 Settings → Pages → Build and deployment → Source 选择 **GitHub Actions**。
-2. 添加 `.github/workflows/deploy.yml`，依次完成：检出代码、安装 Node.js LTS、执行 `npm ci`（或 `npm install`）、执行 `npm run build`、用官方 Pages 发布 action 上传 `dist/` 并部署。action 名称与版本以 GitHub 官方 Pages 文档为准。
-3. 工作流需要 `pages: write` 与 `id-token: write` 权限，并绑定 `github-pages` environment。
-4. 推送到默认分支 `main` 后自动部署。
+1. 打开仓库 Settings → Pages。
+2. 在 Build and deployment 的 Source 中选择 **GitHub Actions**（不要选 Deploy from a branch）。
+3. 确认默认分支为 `main`。
+4. 首次推送后到 Actions 页面查看 `Deploy to GitHub Pages` 工作流；第一次部署可能需要等待 Pages 初始化。
+5. 部署成功后，在 Settings → Pages 看到站点地址 `https://qweeqw231.github.io/micro-subway/`。
 
-关键配置：
+工作流关键配置：
 
-- 项目站点地址为 `https://qweeqw231.github.io/micro-subway/`，需要在 Vite 中设置 `base: '/micro-subway/'`，否则静态资源路径会 404。
-- 构建产物目录按实际配置填写，默认是 `dist`。
+- Node 版本为 22，使用 `npm ci`，与仓库的 `package-lock.json`（npm 10 / lockfile v3）一致。
+- 构建步骤注入 `BASE_PATH=/micro-subway/`，由 `vite.config.ts` 读取并设置 `base`；本地 `npm run dev` 不设置该变量，仍使用根路径 `/`。
+- 工作流权限为 `contents: read`、`pages: write`、`id-token: write`，部署 job 绑定 `github-pages` environment。
+- 产物目录为 `dist`，通过 `actions/upload-pages-artifact` 上传、`actions/deploy-pages` 发布。
 - 只有确定自定义域名后才添加 `CNAME`，不要在仓库中预放占位域名。
-- 部署成功前，README 的试玩链接保持“尚未提供”，不要提前写 Pages 地址。
+
+README 在线试玩链接：
+
+- 本次未添加到 README：Pages 尚未在 GitHub 网页端启用，提前写入会在首次部署前 404。
+- 首次部署成功后，在英文 README 的 “Play in the browser” 和中文 README 的 “浏览器试玩” 段落加入 `https://qweeqw231.github.io/micro-subway/`。
 
 不推荐：手动把 `dist/` 推到 `gh-pages` 分支。产物进入版本历史，容易与源码不一致。
 
