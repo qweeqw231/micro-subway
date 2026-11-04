@@ -27,8 +27,9 @@ Linevale (线城; repo: micro-subway) is a from-scratch, non-commercial transit 
 
 ### Website
 
-- Pages 首次部署成功前保持留空。
-- 部署成功后填写 `https://qweeqw231.github.io/micro-subway/`。
+- 站点已确认上线：`https://qweeqw231.github.io/micro-subway/`。
+- 网页操作：打开仓库首页 → 右栏 **About** 旁的齿轮 → 在 **Website** 填入上面的地址 → **Save changes**。
+- 这是唯一只能网页手填的字段；description 与 topics 的填写位置见第 1、2 节。
 
 ## 2. Topics
 
@@ -51,47 +52,35 @@ linevale, game, web-game, browser-game, metro, transit, line-planning, typescrip
 
 ## 3. GitHub Pages 与在线试玩
 
-### 当前诊断（2026-11-04）
+### 当前实际路径（2026-11-04，已确认）：Actions artifact
 
-- `deploy-pages.yml` 确实已提交到远端 `main`，GitHub Actions API 显示该工作流 `state: active`。
-- 首次运行在 `Configure Pages` 步骤失败，后面 `deploy` job 被跳过；GitHub Pages API 返回 404，说明 Pages 站点本身还没有创建。
-- 因此当前不能只依赖 “Source = GitHub Actions”。下面提供两条路径，**同一时间只让一条在 push 时自动运行**。
+- 线上地址：`https://qweeqw231.github.io/micro-subway/`。
+- 当前站点的部署来自 `.github/workflows/deploy-pages.yml`，GitHub Actions run `41774691679`（attempt 2）成功，head 为 `41c2559`。
+- Pages 的 **Source = GitHub Actions**；该工作流在 push `main` 时自动运行。
+- `.github/workflows/deploy-gh-pages.yml` 只是手动备用，不在 push 时自动运行。
 
-### 路径 A（当前默认，推荐）：发布到 `gh-pages` 分支
+日常发布步骤：
 
-工作流：`.github/workflows/deploy-gh-pages.yml`，推 `main` 时自动执行。
+1. 推送到 `main`。
+2. 打开 **Actions → Deploy to GitHub Pages**，确认 `build` 与 `deploy` 两个 job 都成功。
+3. 刷新 `https://qweeqw231.github.io/micro-subway/`。
 
-网页操作步骤：
+### 备用路径：手动切换到 `gh-pages` 分支
 
-1. 打开仓库 **Settings → Pages**。
-2. **Build and deployment → Source** 选择 **Deploy from a branch**。
-3. Branch 选择 `gh-pages`，目录选择 **`/ (root)`**，点击 Save。
-4. 如果还没有 `gh-pages` 分支，先到 **Actions → Deploy to gh-pages branch**，点 **Run workflow**（或等下一次 push 到 `main`）。
-5. 工作流会执行 `npm ci`、`npm test`、`npm run build:pages`，把 `dist/` 内容提交到 `gh-pages`。
-6. 运行成功后访问 `https://qweeqw231.github.io/micro-subway/`。
+只有 Actions 路径出问题时才切换：
 
-优点：不依赖 Pages 的 “GitHub Actions” Source 选项，网页上只需要选一次分支。
-
-### 路径 B（备用）：Actions artifact 发布
-
-工作流：`.github/workflows/deploy-pages.yml`，已改为仅 `workflow_dispatch` 手动触发，不会和路径 A 抢自动部署。
-
-网页操作步骤：
-
-1. 打开 **Settings → Pages**。
-2. **Source** 选择 **GitHub Actions**。
-3. 打开 **Actions → Deploy to GitHub Pages**，点 **Run workflow**，分支选 `main`。
-4. 等 `build` 与 `deploy` 两个 job 都成功。
-5. 访问 `https://qweeqw231.github.io/micro-subway/`。
-
-注意：如果从路径 B 切回路径 A，要先把 Pages Source 改回 “Deploy from a branch”；不要同时让两条工作流在 push 时自动运行。
+1. 打开 **Actions → Deploy to gh-pages branch**，点 **Run workflow**，分支选 `main`；它会生成或更新 `gh-pages` 分支。
+2. 打开 **Settings → Pages**，**Source** 选择 **Deploy from a branch**。
+3. Branch 选 `gh-pages`，目录选 **`/ (root)`**，点 Save。
+4. 等 Pages 重新发布后访问线上地址。
+5. 切回主路径时，把 Source 改回 **GitHub Actions**；分支工作流本身是手动的，不会和主路径抢自动部署。
 
 ### base 路径
 
 - `vite.config.ts` 使用 `base: process.env.BASE_PATH ?? '/'`。
 - 本地 `npm run dev` 默认根路径 `/`。
-- `npm run build:pages` 设置 `BASE_PATH=/micro-subway/`，产物中的 JS/CSS 均以 `/micro-subway/` 开头。
-- 两条发布工作流都使用 `npm run build:pages`（或等价的 `BASE_PATH` 构建），不写死 base。
+- 主路径工作流注入 `BASE_PATH=/micro-subway/` 后构建；备用分支工作流使用 `npm run build:pages`，同样设置该变量。
+- 产物中的 JS/CSS 均以 `/micro-subway/` 开头，不写死 base。
 
 ### 零平台兜底
 
@@ -101,8 +90,8 @@ linevale, game, web-game, browser-game, metro, transit, line-planning, typescrip
 
 README 在线试玩链接：
 
-- 本次未添加到 README：Pages 尚未创建，提前写入会在首次部署前 404。
-- 任一发布路径成功后，在英文 README 的 “Play in the browser” 和中文 README 的 “浏览器试玩” 段落加入 `https://qweeqw231.github.io/micro-subway/`。
+- 已添加到英文 README 的 “Play in the browser” 和中文 README 的 “浏览器试玩” 段落，地址为 `https://qweeqw231.github.io/micro-subway/`。
+- 两处都使用已确认可用的地址，没有占位符。
 
 不推荐：手动把 `dist/` 直接推到 `gh-pages` 分支。仓库内的两条工作流已经处理构建与发布。
 
@@ -182,13 +171,13 @@ gh api -X POST repos/qweeqw231/micro-subway/pages -F build_type=workflow
 
 - [ ] `LICENSE` 与 `LICENSE-ASSETS` 的版权持有人为 qweeqw231，年份为 2026，MIT 全文保留。
 - [ ] `LICENSE-ASSETS` 的 Source 链接指向 https://github.com/qweeqw231/micro-subway。
-- [ ] README 与中文 README 中的试玩链接仍是占位状态，没有假地址。
+- [ ] README 与中文 README 已包含线上试玩地址 `https://qweeqw231.github.io/micro-subway/`，没有占位符。
 - [ ] 没有编造截图、star 数、下载量或“已支持”功能。
 - [ ] About description 不超过 350 字符（本文两版分别为 326 与 134），且已填入 GitHub 仓库设置。
 - [ ] Topics 已填入 GitHub 仓库设置（见第 2 节）。
-- [ ] Pages 只在构建存在且部署成功后，将 Website 设为 https://qweeqw231.github.io/micro-subway/。
+- [ ] About 的 Website 已手填为 `https://qweeqw231.github.io/micro-subway/`。
 - [ ] `npm run build:pages` 产出的 `dist/index.html` 中 JS/CSS 均以 `/micro-subway/` 开头。
-- [ ] 仅 `.github/workflows/deploy-gh-pages.yml` 在 push `main` 时自动运行；`.github/workflows/deploy-pages.yml` 仅手动触发。
+- [ ] 仅 `.github/workflows/deploy-pages.yml` 在 push `main` 时自动运行；`.github/workflows/deploy-gh-pages.yml` 仅手动触发。
 - [ ] 确认 `.gitignore` 已覆盖 `node_modules/`、`dist/`、构建产物、日志、`.screenshots/` 与 Tauri `src-tauri/target/`。
 - [ ] 确认 `README` 与 `README.zh-CN.md` 的设计文档相对链接可打开。
 - [ ] 若 README 使用徽章，链接分别指向真实仓库的 `LICENSE`、`LICENSE-ASSETS` 与 `#status` 锚点。

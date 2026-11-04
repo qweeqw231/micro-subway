@@ -10,9 +10,9 @@ Linevale is a non-commercial transit line-planning game for the browser. You dra
 
 ## Status
 
-**Early design and development. There is no playable build yet.**
+**Early development. A playable Web build is online; later milestones are still in progress.**
 
-This repository currently contains design documentation only: no runnable code, no screenshots, and no online demo. Everything described below is the intended design, not shipped behavior. Sections marked **(planned)** are not implemented. This README will be updated when the first playable Web build exists.
+This repository contains a runnable Web prototype and design documentation. Sections marked **(planned)** describe work that is still in progress.
 
 ## Gameplay (planned)
 
@@ -42,11 +42,7 @@ Mouse and touch are both first-class inputs. Final bindings may change during im
 
 ## Play in the browser
 
-**Playable build:** not available yet.
-
-There is no online demo at this stage. A link will be added here once the first public Web build is ready.
-
-<!-- TODO: add the playable build URL after the first public Web build -->
+**Play online:** https://qweeqw231.github.io/micro-subway/
 
 ## Saves (planned)
 
