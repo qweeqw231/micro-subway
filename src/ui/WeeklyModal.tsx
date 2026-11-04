@@ -110,8 +110,27 @@ function TargetPicker({
   const maxSelections = isStations
     ? params.stations.stationsPerExpansion
     : 1;
-  const lines = hud.lines.filter((line) => !line.removing && line.stationCount >= 2);
-  const stations = hud.stations.filter((station) => station.active);
+  const cardKind = weekly.selectedCard.kind;
+  const lines = hud.lines.filter((line) => {
+    if (line.removing || line.stationCount < 2) {
+      return false;
+    }
+    if (cardKind === 'train') {
+      return line.trainCount < params.trains.maxTrainsPerLine;
+    }
+    if (cardKind === 'carriage') {
+      return line.carriageLevel < params.upgrades.caps.carriageMaxPerLine;
+    }
+    if (cardKind === 'speed') {
+      return line.speedStacks < params.upgrades.caps.speedMaxStacks;
+    }
+    return true;
+  });
+  const stations = hud.stations.filter(
+    (station) =>
+      station.active &&
+      station.capacity < params.upgrades.caps.stationCapacityMax,
+  );
 
   const toggle = (id: string) => {
     if (!isStations) {

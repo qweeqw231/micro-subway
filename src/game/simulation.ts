@@ -1,7 +1,7 @@
 import { demoMap } from './demo-map';
 import { countWaterCrossings } from './map-utils';
 import { params } from './params';
-import { createRng, type Rng } from './rng';
+import { createRng, deriveRngSeed, type Rng } from './rng';
 import {
   estimateRemainingCost,
   findRoute,
@@ -33,7 +33,8 @@ export class Simulation {
   readonly seed: number;
   lastActionError: 'bridge' | null = null;
 
-  private readonly rng: Rng;
+  private readonly spawnRng: Rng;
+  private readonly cardRng: Rng;
   private readonly routeCache = new Map<string, RoutePlan | null>();
   private lastRouteRefreshSec = 0;
   private nextPassengerId = 1;
@@ -41,7 +42,8 @@ export class Simulation {
   constructor(map: GameMap = demoMap, seed = DEFAULT_SEED) {
     this.map = map;
     this.seed = seed;
-    this.rng = createRng(seed);
+    this.spawnRng = createRng(seed);
+    this.cardRng = createRng(deriveRngSeed(seed, 0x43415244));
     const mapTuning = (
       params.maps as Record<string, { initialBridgeTokens?: number }>
     )[map.id];
@@ -134,7 +136,8 @@ export class Simulation {
   exportSnapshot(): SimSnapshot {
     return {
       seed: this.seed,
-      rngState: this.rng.getState(),
+      rngState: this.spawnRng.getState(),
+      cardRngState: this.cardRng.getState(),
       nextPassengerId: this.nextPassengerId,
       lastRouteRefreshSec: this.lastRouteRefreshSec,
       state: this.state,
@@ -143,7 +146,10 @@ export class Simulation {
 
   static fromSnapshot(map: GameMap, snapshot: SimSnapshot): Simulation {
     const simulation = new Simulation(map, snapshot.seed);
-    simulation.rng.setState(snapshot.rngState);
+    simulation.spawnRng.setState(snapshot.rngState);
+    if (snapshot.cardRngState) {
+      simulation.cardRng.setState(snapshot.cardRngState);
+    }
     simulation.nextPassengerId = snapshot.nextPassengerId;
     simulation.lastRouteRefreshSec = snapshot.lastRouteRefreshSec;
     Object.assign(simulation.state, snapshot.state);
@@ -484,7 +490,7 @@ export class Simulation {
 
     while (cards.length < count && candidates.length > 0) {
       const total = candidates.reduce((sum, entry) => sum + entry.weight, 0);
-      let roll = this.rng() * total;
+      let roll = this.cardRng() * total;
       let selectedIndex = candidates.length - 1;
 
       for (let index = 0; index < candidates.length; index += 1) {
@@ -581,7 +587,9 @@ export class Simulation {
         .map((id) => this.tryStation(id))
         .filter(
           (station): station is Station =>
-            station !== undefined && station.active,
+            station !== undefined &&
+            station.active &&
+            station.capacity < params.upgrades.caps.stationCapacityMax,
         );
       const stations =
         targetStations.length > 0
@@ -617,7 +625,11 @@ export class Simulation {
   private autoTargetIds(kind: UpgradeKind): string[] {
     if (kind === 'stationExpansion') {
       return this.state.stations
-        .filter((station) => station.active)
+        .filter(
+          (station) =>
+            station.active &&
+            station.capacity < params.upgrades.caps.stationCapacityMax,
+        )
         .sort((a, b) => b.queue.length - a.queue.length)
         .slice(0, params.stations.stationsPerExpansion)
         .map((station) => station.id);
@@ -631,17 +643,36 @@ export class Simulation {
     return [];
   }
 
+  private lineAtCap(kind: UpgradeKind, line: Line): boolean {
+    if (kind === 'train') {
+      return (
+        this.state.trains.filter((train) => train.lineId === line.id).length >=
+        params.trains.maxTrainsPerLine
+      );
+    }
+    if (kind === 'carriage') {
+      return line.carriageLevel >= params.upgrades.caps.carriageMaxPerLine;
+    }
+    if (kind === 'speed') {
+      return line.speedStacks >= params.upgrades.caps.speedMaxStacks;
+    }
+    return false;
+  }
+
   private resolveTargetLine(
     kind: UpgradeKind,
     targetIds: string[],
   ): Line | undefined {
     const requested = targetIds[0] ? this.tryLine(targetIds[0]) : undefined;
-    if (requested && !requested.removing) {
+    if (requested && !requested.removing && !this.lineAtCap(kind, requested)) {
       return requested;
     }
 
     const lines = this.state.lines.filter(
-      (line) => !line.removing && line.stationIds.length >= 2,
+      (line) =>
+        !line.removing &&
+        line.stationIds.length >= 2 &&
+        !this.lineAtCap(kind, line),
     );
     if (lines.length === 0) {
       return undefined;
@@ -832,7 +863,10 @@ export class Simulation {
   }
 
   private createTrain(line: Line): void {
-    this.addTrainToLine(line);
+    const count = Math.max(0, Math.floor(params.trains.initialPerLine));
+    for (let index = 0; index < count; index += 1) {
+      this.addTrainToLine(line);
+    }
   }
 
   private addTrainToLine(line: Line): boolean {
@@ -1025,7 +1059,7 @@ export class Simulation {
     }
 
     const total = choices.reduce((sum, choice) => sum + choice.weight, 0);
-    let roll = this.rng() * total;
+    let roll = this.spawnRng() * total;
     let picked = choices[choices.length - 1];
 
     for (const choice of choices) {
@@ -1400,7 +1434,7 @@ export class Simulation {
 
   private randomDelay(rate: number): number {
     const safeRate = Math.max(rate, 0.000001);
-    const random = Math.max(this.rng(), 0.000001);
+    const random = Math.max(this.spawnRng(), 0.000001);
     return -Math.log(1 - random) / safeRate;
   }
 

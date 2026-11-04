@@ -177,6 +177,7 @@ export interface StationHudInfo {
 export interface SimSnapshot {
   seed: number;
   rngState: [number, number, number, number];
+  cardRngState?: [number, number, number, number];
   nextPassengerId: number;
   lastRouteRefreshSec: number;
   state: SimState;

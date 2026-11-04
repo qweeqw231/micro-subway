@@ -48,7 +48,7 @@ export const threeRivers: GameMap = {
   ],
   startDayProgress: 0.25,
   demandScale: 1.1,
-  overloadGraceSec: 15,
+  overloadGraceSec: 18,
   stations: [
     { id: 's1', x: 220, y: 300, type: 'residential', appearWeek: 1 },
     { id: 's2', x: 260, y: 600, type: 'work', appearWeek: 1 },

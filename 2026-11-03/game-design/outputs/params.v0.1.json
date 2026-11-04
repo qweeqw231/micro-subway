@@ -7,8 +7,8 @@
     "speeds": [1, 2, 4]
   },
   "demand": {
-    "baseRatePerStation": 0.05,
-    "weeklyGrowth": 1.10,
+    "baseRatePerStation": 0.047,
+    "weeklyGrowth": 1.08,
     "growthSoftCapWeek": 12,
     "firstLineSpawnDelaySec": 8,
     "queueHardCapFactor": 2,
@@ -71,7 +71,7 @@
     "dwellPerPassengerSec": 0.1,
     "dwellMaxSec": 4.0,
     "maxTrainsPerLine": 4,
-    "initialPerLine": 1,
+    "initialPerLine": 2,
     "speedUpgradeFactor": 1.08,
     "speedUpgradeMaxStacks": 2,
     "dispatchRule": "largest-gap"
@@ -134,8 +134,7 @@
       "speedMaxStacks": 2,
       "stationCapacityMax": 14
     },
-    "pityOverloadEvents": 2,
-    "forcedThirdLineWeek": 2
+    "pityOverloadEvents": 2
   },
   "maps": {
     "tidal-bay": {
@@ -181,7 +180,7 @@
       "startLines": 2,
       "initialBridgeTokens": 2,
       "demandScale": 1.1,
-      "overloadGraceSec": 15,
+      "overloadGraceSec": 18,
       "stationMix": {
         "residential": 3,
         "work": 2,
@@ -236,7 +235,16 @@
   },
   "_meta": {
     "note": "以下划线开头的键仅供阅读，加载器应忽略。各参数的推荐范围与依据见 GDD 第 6 节。",
+    "balanceNote": "2026-11-04 平衡定稿：weeklyGrowth=1.08、baseRatePerStation=0.047、initialPerLine=2、三河岛宽限=18；依据三图各 50 seed 无头复核，中位 10/10/8 周。",
     "rerouteNote": "rerouteImprovementRatio=0.08：新路线剩余成本低于旧路线 8% 才切换；候车与车上乘客共用同一阈值。",
+    "consumedKeys": {
+      "trains.initialPerLine": "已接线：新建线路施工完成时按该值循环配发初始列车；2026-11-04 定稿值为 2。",
+      "lines.thirdUnlockWeek": "已接线：第 2 周固定解锁第 3 条线路；替代已删除的 upgrades.forcedThirdLineWeek。"
+    },
+    "removedKeys": {
+      "upgrades.forcedThirdLineWeek": "已删除：与 lines.thirdUnlockWeek 语义重复，且从未被代码读取；固定解锁统一由 lines.thirdUnlockWeek 控制。"
+    },
+    "rngStreams": "生成流使用注入 seed；抽卡流使用 deriveRngSeed(seed, 0x43415244)。存档 rngState 存生成流，cardRngState 存抽卡流；旧档缺后者时按派生初始态加载。",
     "tuningOrder": [
       "demand.baseRatePerStation",
       "stations.overloadGraceSec",

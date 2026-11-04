@@ -75,7 +75,9 @@ export function isSaveFileV1(value: unknown): value is SaveFileV1 {
     !!file.snapshot &&
     typeof file.snapshot === 'object' &&
     !!file.snapshot.state &&
-    Array.isArray(file.snapshot.rngState)
+    Array.isArray(file.snapshot.rngState) &&
+    (file.snapshot.cardRngState === undefined ||
+      Array.isArray(file.snapshot.cardRngState))
   );
 }
 

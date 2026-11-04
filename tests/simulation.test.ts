@@ -22,9 +22,9 @@ function keepOnlyActive(simulation: Simulation, activeIds: string[]): void {
 }
 
 describe('Simulation M3', () => {
-  it('ships three maps with distinct graces and water', () => {
+  it('ships three maps with expected graces and water', () => {
     expect(GAME_MAPS).toHaveLength(3);
-    expect(GAME_MAPS.map((map) => map.overloadGraceSec)).toEqual([24, 18, 15]);
+    expect(GAME_MAPS.map((map) => map.overloadGraceSec)).toEqual([24, 18, 18]);
     expect(GAME_MAPS.every((map) => map.water.length > 0)).toBe(true);
   });
 
@@ -73,6 +73,79 @@ describe('Simulation M3', () => {
     );
   });
 
+  it('reads trains.initialPerLine when a new line finishes construction', () => {
+    const simulation = new Simulation(demoMap, 26);
+    const original = params.trains.initialPerLine;
+    (params.trains as { initialPerLine: number }).initialPerLine = 3;
+    try {
+      simulation.createLine(['s1', 's3'], 0);
+      runFor(simulation, params.lines.construction.newLineSec + 0.1);
+      expect(simulation.state.trains).toHaveLength(3);
+    } finally {
+      (params.trains as { initialPerLine: number }).initialPerLine = original;
+    }
+  });
+
+  it('keeps spawn and card RNG streams independent', () => {
+    const withSpawns = new Simulation(demoMap, 32);
+    const withoutSpawns = new Simulation(demoMap, 32);
+    keepOnlyActive(withoutSpawns, []);
+
+    runFor(withSpawns, 1);
+    runFor(withoutSpawns, 1);
+
+    const withSpawnState = withSpawns.exportSnapshot();
+    const withoutSpawnState = withoutSpawns.exportSnapshot();
+
+    expect(withSpawnState.rngState).not.toEqual(withoutSpawnState.rngState);
+    expect(withSpawnState.cardRngState).toEqual(withoutSpawnState.cardRngState);
+  });
+
+  it('skips maxed stations and capped lines when suggesting upgrade targets', () => {
+    const simulation = new Simulation(demoMap, 25);
+    const s1 = simulation.state.stations.find((station) => station.id === 's1');
+    if (!s1) {
+      throw new Error('Missing station s1');
+    }
+    s1.capacity = params.upgrades.caps.stationCapacityMax;
+    simulation.state.weekly = {
+      phase: 'cards',
+      summary: {
+        completedWeek: 1,
+        delivered: 0,
+        maxQueue: 0,
+        newStations: 0,
+      },
+      cards: [{ id: 'card-exp', kind: 'stationExpansion' }],
+      selectedCard: null,
+      targetKind: null,
+      defaultTargetIds: [],
+    };
+    simulation.chooseUpgrade('card-exp');
+    expect(simulation.state.weekly?.defaultTargetIds).not.toContain('s1');
+
+    simulation.state.weekly = null;
+    simulation.createLine(['s1', 's3'], 0);
+    simulation.createLine(['s4', 's6'], 1);
+    runFor(simulation, params.lines.construction.newLineSec + 0.1);
+    simulation.state.lines[0].speedStacks = params.upgrades.caps.speedMaxStacks;
+    simulation.state.weekly = {
+      phase: 'cards',
+      summary: {
+        completedWeek: 1,
+        delivered: 0,
+        maxQueue: 0,
+        newStations: 0,
+      },
+      cards: [{ id: 'card-speed', kind: 'speed' }],
+      selectedCard: null,
+      targetKind: null,
+      defaultTargetIds: [],
+    };
+    simulation.chooseUpgrade('card-speed');
+    expect(simulation.state.weekly?.defaultTargetIds).toEqual(['L2']);
+  });
+
   it('lets the player pick a different line target after choosing a card', () => {
     const simulation = new Simulation(demoMap, 22);
     simulation.createLine(['s1', 's3'], 0);
@@ -93,7 +166,7 @@ describe('Simulation M3', () => {
     expect(simulation.state.weekly).toBeNull();
     expect(
       simulation.state.trains.filter((train) => train.lineId === 'L2'),
-    ).toHaveLength(2);
+    ).toHaveLength(params.trains.initialPerLine + 1);
   });
 
   it('stops at the week boundary and applies an upgrade before week two', () => {
@@ -140,7 +213,7 @@ describe('Simulation M2', () => {
     runFor(simulation, params.lines.construction.newLineSec + 0.1);
 
     expect(simulation.state.lines[0].construction).toBeNull();
-    expect(simulation.state.trains).toHaveLength(1);
+    expect(simulation.state.trains).toHaveLength(params.trains.initialPerLine);
   });
 
   it('moves the train after the initial dwell', () => {
@@ -176,6 +249,11 @@ describe('Simulation M2', () => {
 
     const simulation = new Simulation(grid, 23);
     keepOnlyActive(simulation, ['s1', 's2']);
+    for (const station of simulation.state.stations) {
+      if (station.active) {
+        station.capacity = 10;
+      }
+    }
     runFor(simulation, 141);
 
     expect(simulation.state.weekly?.phase).toBe('summary');
@@ -186,6 +264,11 @@ describe('Simulation M2', () => {
       simulation.confirmUpgradeTarget(simulation.state.weekly.defaultTargetIds);
     }
     keepOnlyActive(simulation, ['s1', 's2']);
+    for (const station of simulation.state.stations) {
+      if (station.active) {
+        station.capacity = params.stations.capacity;
+      }
+    }
     runFor(simulation, 40);
 
     expect(simulation.state.failed).toBe(true);
@@ -297,7 +380,7 @@ describe('Simulation M2', () => {
 
     expect(simulation.state.lines[0].construction).toBeNull();
     expect(simulation.state.lines[0].stationIds).toEqual(['s1', 's2', 's3']);
-    expect(simulation.state.trains).toHaveLength(1);
+    expect(simulation.state.trains).toHaveLength(params.trains.initialPerLine);
   });
 
   it('moves waiting passengers to a newly built direct line', () => {
@@ -465,6 +548,6 @@ describe('Simulation M2', () => {
 
     expect(simulation.state.lines[0].construction).toBeNull();
     expect(simulation.state.lines[0].stationIds).toEqual(['s1', 's5']);
-    expect(simulation.state.trains).toHaveLength(1);
+    expect(simulation.state.trains).toHaveLength(params.trains.initialPerLine);
   });
 });

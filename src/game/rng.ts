@@ -7,6 +7,17 @@ export interface Rng {
 }
 
 /**
+ * Derives an independent stream seed from the injected run seed.
+ * Same seed + same stream always produces the same stream.
+ */
+export function deriveRngSeed(seed: number, stream: number): number {
+  let value = (seed ^ Math.imul(stream, 0x9e3779b1)) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x85ebca6b) >>> 0;
+  value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35) >>> 0;
+  return (value ^ (value >>> 16)) >>> 0;
+}
+
+/**
  * sfc32: small, deterministic, good enough for passenger spawns.
  */
 export function createRng(seed: number): Rng {

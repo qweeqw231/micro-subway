@@ -38,9 +38,10 @@ describe('Save schema v1', () => {
 
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.mapId).toBe('tidal-bay');
+    expect(parsed.snapshot.cardRngState).toHaveLength(4);
     expect(restored.state.week).toBe(simulation.state.week);
     expect(restored.state.lines).toHaveLength(1);
-    expect(restored.state.trains).toHaveLength(1);
+    expect(restored.state.trains).toHaveLength(params.trains.initialPerLine);
     expect(restored.state.stats.delivered).toBe(simulation.state.stats.delivered);
     expect(restored.state.elapsedSec).toBeCloseTo(simulation.state.elapsedSec);
   });
@@ -54,5 +55,20 @@ describe('Save schema v1', () => {
         slot: 1,
       }),
     ).toThrow('Unsupported save schema');
+  });
+
+  it('loads legacy snapshots without cardRngState', () => {
+    const map = getMap('old-grid');
+    if (!map) {
+      throw new Error('Missing old grid');
+    }
+
+    const simulation = new Simulation(map, 32);
+    const { cardRngState: _ignored, ...legacySnapshot } =
+      simulation.exportSnapshot();
+    const restored = Simulation.fromSnapshot(map, legacySnapshot);
+
+    expect(restored.state.week).toBe(simulation.state.week);
+    expect(restored.state.lines).toHaveLength(0);
   });
 });
