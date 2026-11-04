@@ -49,34 +49,62 @@ linevale, game, web-game, browser-game, metro, transit, line-planning, typescrip
 
 不建议使用 `micro-subway`、`subway` 这类与仓库 slug 或题材泛称重叠的命名标签，也不使用 `mini-metro`、`dinosaur-polo-club` 等原作名称，以减少“slug 被当成游戏名”的误解和商标混淆。题材检索已由 `metro`、`transit` 覆盖。
 
-## 3. GitHub Pages
+## 3. GitHub Pages 与在线试玩
 
-### 推荐方式：GitHub Actions 构建并部署
+### 当前诊断（2026-11-04）
 
-当前 Web 构建已存在，工作流文件为 `.github/workflows/deploy-pages.yml`。推送到 `main` 后会自动执行测试、构建并发布。
+- `deploy-pages.yml` 确实已提交到远端 `main`，GitHub Actions API 显示该工作流 `state: active`。
+- 首次运行在 `Configure Pages` 步骤失败，后面 `deploy` job 被跳过；GitHub Pages API 返回 404，说明 Pages 站点本身还没有创建。
+- 因此当前不能只依赖 “Source = GitHub Actions”。下面提供两条路径，**同一时间只让一条在 push 时自动运行**。
 
-用户需要在 GitHub 网页完成的步骤：
+### 路径 A（当前默认，推荐）：发布到 `gh-pages` 分支
 
-1. 打开仓库 Settings → Pages。
-2. 在 Build and deployment 的 Source 中选择 **GitHub Actions**（不要选 Deploy from a branch）。
-3. 确认默认分支为 `main`。
-4. 首次推送后到 Actions 页面查看 `Deploy to GitHub Pages` 工作流；第一次部署可能需要等待 Pages 初始化。
-5. 部署成功后，在 Settings → Pages 看到站点地址 `https://qweeqw231.github.io/micro-subway/`。
+工作流：`.github/workflows/deploy-gh-pages.yml`，推 `main` 时自动执行。
 
-工作流关键配置：
+网页操作步骤：
 
-- Node 版本为 22，使用 `npm ci`，与仓库的 `package-lock.json`（npm 10 / lockfile v3）一致。
-- 构建步骤注入 `BASE_PATH=/micro-subway/`，由 `vite.config.ts` 读取并设置 `base`；本地 `npm run dev` 不设置该变量，仍使用根路径 `/`。
-- 工作流权限为 `contents: read`、`pages: write`、`id-token: write`，部署 job 绑定 `github-pages` environment。
-- 产物目录为 `dist`，通过 `actions/upload-pages-artifact` 上传、`actions/deploy-pages` 发布。
-- 只有确定自定义域名后才添加 `CNAME`，不要在仓库中预放占位域名。
+1. 打开仓库 **Settings → Pages**。
+2. **Build and deployment → Source** 选择 **Deploy from a branch**。
+3. Branch 选择 `gh-pages`，目录选择 **`/ (root)`**，点击 Save。
+4. 如果还没有 `gh-pages` 分支，先到 **Actions → Deploy to gh-pages branch**，点 **Run workflow**（或等下一次 push 到 `main`）。
+5. 工作流会执行 `npm ci`、`npm test`、`npm run build:pages`，把 `dist/` 内容提交到 `gh-pages`。
+6. 运行成功后访问 `https://qweeqw231.github.io/micro-subway/`。
+
+优点：不依赖 Pages 的 “GitHub Actions” Source 选项，网页上只需要选一次分支。
+
+### 路径 B（备用）：Actions artifact 发布
+
+工作流：`.github/workflows/deploy-pages.yml`，已改为仅 `workflow_dispatch` 手动触发，不会和路径 A 抢自动部署。
+
+网页操作步骤：
+
+1. 打开 **Settings → Pages**。
+2. **Source** 选择 **GitHub Actions**。
+3. 打开 **Actions → Deploy to GitHub Pages**，点 **Run workflow**，分支选 `main`。
+4. 等 `build` 与 `deploy` 两个 job 都成功。
+5. 访问 `https://qweeqw231.github.io/micro-subway/`。
+
+注意：如果从路径 B 切回路径 A，要先把 Pages Source 改回 “Deploy from a branch”；不要同时让两条工作流在 push 时自动运行。
+
+### base 路径
+
+- `vite.config.ts` 使用 `base: process.env.BASE_PATH ?? '/'`。
+- 本地 `npm run dev` 默认根路径 `/`。
+- `npm run build:pages` 设置 `BASE_PATH=/micro-subway/`，产物中的 JS/CSS 均以 `/micro-subway/` 开头。
+- 两条发布工作流都使用 `npm run build:pages`（或等价的 `BASE_PATH` 构建），不写死 base。
+
+### 零平台兜底
+
+- 运行 `npm run build:pages`，把生成的 `dist/` 内容原样上传到任意静态托管（自己的服务器、对象存储、其他静态平台均可）。
+- 该产物默认假设访问前缀是 `/micro-subway/`；如果托管在根路径或其他子路径，改用 `BASE_PATH=/your-prefix/ npm run build` 重新构建。
+- 无需 GitHub Pages 也能玩；Pages 只是其中一种托管方式。
 
 README 在线试玩链接：
 
-- 本次未添加到 README：Pages 尚未在 GitHub 网页端启用，提前写入会在首次部署前 404。
-- 首次部署成功后，在英文 README 的 “Play in the browser” 和中文 README 的 “浏览器试玩” 段落加入 `https://qweeqw231.github.io/micro-subway/`。
+- 本次未添加到 README：Pages 尚未创建，提前写入会在首次部署前 404。
+- 任一发布路径成功后，在英文 README 的 “Play in the browser” 和中文 README 的 “浏览器试玩” 段落加入 `https://qweeqw231.github.io/micro-subway/`。
 
-不推荐：手动把 `dist/` 推到 `gh-pages` 分支。产物进入版本历史，容易与源码不一致。
+不推荐：手动把 `dist/` 直接推到 `gh-pages` 分支。仓库内的两条工作流已经处理构建与发布。
 
 ## 4. Discussions
 
@@ -159,6 +187,8 @@ gh api -X POST repos/qweeqw231/micro-subway/pages -F build_type=workflow
 - [ ] About description 不超过 350 字符（本文两版分别为 326 与 134），且已填入 GitHub 仓库设置。
 - [ ] Topics 已填入 GitHub 仓库设置（见第 2 节）。
 - [ ] Pages 只在构建存在且部署成功后，将 Website 设为 https://qweeqw231.github.io/micro-subway/。
+- [ ] `npm run build:pages` 产出的 `dist/index.html` 中 JS/CSS 均以 `/micro-subway/` 开头。
+- [ ] 仅 `.github/workflows/deploy-gh-pages.yml` 在 push `main` 时自动运行；`.github/workflows/deploy-pages.yml` 仅手动触发。
 - [ ] 确认 `.gitignore` 已覆盖 `node_modules/`、`dist/`、构建产物、日志、`.screenshots/` 与 Tauri `src-tauri/target/`。
 - [ ] 确认 `README` 与 `README.zh-CN.md` 的设计文档相对链接可打开。
 - [ ] 若 README 使用徽章，链接分别指向真实仓库的 `LICENSE`、`LICENSE-ASSETS` 与 `#status` 锚点。
