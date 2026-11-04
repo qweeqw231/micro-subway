@@ -9,7 +9,7 @@ import {
   type SaveFileV1,
 } from '../game/save/schema';
 import { Simulation } from '../game/simulation';
-import type { GameMap, HudSnapshot } from '../game/types';
+import type { GameMap, HudSnapshot, Station } from '../game/types';
 import { t } from '../i18n';
 import { webSaveRepository } from '../platform/web/storage';
 import type { SaveSummary } from '../platform/types';
@@ -187,20 +187,43 @@ export function App() {
     };
   };
 
-  const findStationAt = (x: number, y: number) => {
+  const hitRadiusFor = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ): number => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+      return params.ui.stationHitRadiusPx;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const logicalPerCss = params.ui.logicalWidth / rect.width;
+    return Math.max(
+      params.ui.stationHitRadiusPx,
+      (params.ui.minTouchTargetPx / 2) * logicalPerCss,
+    );
+  };
+
+  const findStationAt = (
+    x: number,
+    y: number,
+    radius = params.ui.stationHitRadiusPx,
+  ) => {
     const simulation = simulationRef.current;
     if (!simulation) {
       return null;
     }
 
-    return (
-      simulation.state.stations.find(
-        (station) =>
-          station.active &&
-          Math.hypot(station.x - x, station.y - y) <=
-            params.ui.stationHitRadiusPx,
-      ) ?? null
-    );
+    let nearest: Station | null = null;
+    let nearestDistance = radius;
+    for (const station of simulation.state.stations) {
+      if (!station.active) {
+        continue;
+      }
+      const distance = Math.hypot(station.x - x, station.y - y);
+      if (distance <= nearestDistance) {
+        nearest = station;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
   };
 
   const getSelectedLine = () => {
@@ -241,7 +264,7 @@ export function App() {
     }
 
     const point = pointerToLogical(event);
-    const station = findStationAt(point.x, point.y);
+    const station = findStationAt(point.x, point.y, hitRadiusFor(event));
 
     if (rewireMode) {
       const line = getSelectedLine();
@@ -297,7 +320,7 @@ export function App() {
     }
 
     const point = pointerToLogical(event);
-    const station = findStationAt(point.x, point.y);
+    const station = findStationAt(point.x, point.y, hitRadiusFor(event));
     const simulation = simulationRef.current;
     let crossing = false;
     let bridgeAllowed = true;
@@ -481,7 +504,9 @@ export function App() {
   }, [hud?.failed]);
 
   const toggleSpeed = useCallback(() => {
-    const next = speedRef.current === 1 ? 2 : 1;
+    const speeds = params.time.speeds;
+    const currentIndex = speeds.indexOf(speedRef.current);
+    const next = speeds[(currentIndex + 1) % speeds.length] ?? speeds[0];
     speedRef.current = next;
     setSpeed(next);
   }, []);

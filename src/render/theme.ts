@@ -4,7 +4,7 @@ export const theme = {
   water: '#CFE0E3',
   park: '#DDE6D2',
   ink: '#20242B',
-  muted: '#6B7280',
+  muted: '#5F6674',
   danger: '#C0392B',
   warning: '#E0A100',
   lineWidth: 7,
