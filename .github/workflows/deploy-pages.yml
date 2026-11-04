@@ -1,8 +1,10 @@
-# Alternative path: requires Settings -> Pages -> Source: GitHub Actions.
-# The automatic push deployment lives in deploy-gh-pages.yml; run this manually only after switching Pages to the Actions source.
+# Primary path: requires Settings -> Pages -> Source: GitHub Actions.
+# The gh-pages branch fallback lives in deploy-gh-pages.yml and is manual-only.
 name: Deploy to GitHub Pages
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -1,8 +1,8 @@
+# Fallback path: run manually only after switching Settings -> Pages -> Source to "Deploy from a branch".
+# The primary deployment is deploy-pages.yml on push to main.
 name: Deploy to gh-pages branch
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
